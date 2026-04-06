@@ -1,0 +1,28 @@
+import os
+
+BASE_DIR = "/Volumes/HIKSEMI/world-model-research"
+DB_PATH  = os.path.join(BASE_DIR, "papers.db")
+PDF_DIR  = os.path.join(BASE_DIR, "pdfs")
+
+# AI interface (OpenAI-compatible)
+LLM_BASE_URL = "https://api.deepseek.com/v1"   # replace with Qwen URL if needed
+LLM_API_KEY  = "your-api-key-here"              # fill in before using summarize.py
+LLM_MODEL    = "deepseek-chat"
+
+# Semantic Scholar (optional — higher rate limit with key)
+S2_API_KEY = ""
+
+TARGET_VENUES = ["neurips", "icml", "iclr", "cvpr", "corl"]
+YEAR_RANGE    = (2021, 2025)
+
+KEYWORDS = [
+    "world model",
+    "generative world model",
+    "world foundation model",
+    "dreamer",
+    "PlaNet",
+    "TD-MPC",
+    "model-based RL",
+    "video prediction world model",
+    "embodied world model",
+]
