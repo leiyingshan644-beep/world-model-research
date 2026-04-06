@@ -59,6 +59,17 @@ def test_paper_detail_404_for_unknown(client):
     assert resp.status_code == 404
 
 
+def test_open_pdf_calls_subprocess(client):
+    paper = _paper()
+    with patch("browse.get_papers", return_value=[paper]):
+        with patch("browse.os.path.exists", return_value=True):
+            with patch("browse.subprocess.Popen") as mock_popen:
+                resp = client.post("/open_pdf/2301.04589")
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+    mock_popen.assert_called_once_with(["open", "/tmp/fake.pdf"])
+
+
 def test_save_thoughts_updates_db(client):
     with patch("browse.update_my_thoughts") as mock_update:
         resp = client.post(
