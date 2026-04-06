@@ -170,6 +170,15 @@ def index():
 
     if q:
         papers = search_papers(q)
+        # Apply any active dropdown filters on top of the text search results
+        if venue:
+            papers = [p for p in papers if p.get("venue") == venue]
+        if year:
+            papers = [p for p in papers if str(p.get("year") or "") == year]
+        if label:
+            papers = [p for p in papers if p.get("relevance_label") == label]
+        if status:
+            papers = [p for p in papers if p.get("status") == status]
     else:
         papers = get_papers(
             venue=venue or None,
@@ -199,12 +208,13 @@ def open_pdf(paper_id):
     paper = next((p for p in all_papers if p["id"] == paper_id), None)
     if paper and paper.get("pdf_path") and os.path.exists(paper["pdf_path"]):
         subprocess.Popen(["open", paper["pdf_path"]])
-    return jsonify({"ok": True})
+        return jsonify({"ok": True})
+    return jsonify({"ok": False})
 
 
 @app.route("/save_thoughts/<path:paper_id>", methods=["POST"])
 def save_thoughts(paper_id):
-    data = request.get_json()
+    data = request.get_json() or {}
     update_my_thoughts(paper_id, data.get("thoughts", ""))
     return jsonify({"ok": True})
 

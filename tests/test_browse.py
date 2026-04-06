@@ -70,6 +70,24 @@ def test_open_pdf_calls_subprocess(client):
     mock_popen.assert_called_once_with(["open", "/tmp/fake.pdf"])
 
 
+def test_open_pdf_returns_false_when_file_missing(client):
+    paper = _paper(pdf_path="/nonexistent/path.pdf")
+    with patch("browse.get_papers", return_value=[paper]):
+        resp = client.post("/open_pdf/2301.04589")
+    assert resp.get_json()["ok"] is False
+
+
+def test_index_search_applies_venue_filter(client):
+    papers = [
+        _paper(id="a", venue="neurips"),
+        _paper(id="b", title="Other", venue="icml"),
+    ]
+    with patch("browse.search_papers", return_value=papers):
+        resp = client.get("/?q=world&venue=neurips")
+    assert b"DreamerV3" in resp.data
+    assert b"Other" not in resp.data
+
+
 def test_save_thoughts_updates_db(client):
     with patch("browse.update_my_thoughts") as mock_update:
         resp = client.post(
