@@ -70,12 +70,18 @@ _LIST_HTML = """<!DOCTYPE html>
       <option value="{{ s }}" {{ 'selected' if status==s }}>{{ s }}</option>
       {% endfor %}
     </select>
+    <select name="tag">
+      <option value="">所有标签</option>
+      {% for t in all_tags %}
+      <option value="{{ t.name }}" {{ 'selected' if tag==t.name }}>{{ t.name }} ({{ t.count }})</option>
+      {% endfor %}
+    </select>
     <button type="submit">筛选</button>
   </div>
 </form>
 <p class="count">共 {{ papers|length }} 篇</p>
 <table>
-  <tr><th>标题</th><th>会议</th><th>年份</th><th>标记</th><th>状态</th><th>得分</th></tr>
+  <tr><th>标题</th><th>会议</th><th>年份</th><th>标记</th><th>状态</th><th>得分</th><th>加分</th></tr>
   {% for p in papers %}
   <tr>
     <td><a href="{{ url_for('paper_detail', paper_id=p.id) }}">{{ p.title[:80] }}</a></td>
@@ -84,9 +90,28 @@ _LIST_HTML = """<!DOCTYPE html>
     <td><span class="badge badge-{{ p.relevance_label or '' }}">{{ p.relevance_label or '-' }}</span></td>
     <td><span class="badge badge-{{ p.status }}">{{ p.status }}</span></td>
     <td>{{ '%.2f'|format(p.relevance_score or 0) }}</td>
+    <td>
+      {% if p.manual_boost %}<span style="color:#e67e22;font-size:11px">+{{ '%.2f'|format(p.manual_boost) }}</span>{% endif %}
+      <button class="boost-btn" style="padding:2px 6px;font-size:11px;background:#e67e22;color:#fff;border:none;border-radius:3px;cursor:pointer;margin-left:2px" onclick="adjustBoost('{{ p.id }}', {{ p.manual_boost or 0 }})">±</button>
+    </td>
   </tr>
   {% endfor %}
 </table>
+<script>
+function adjustBoost(paperId, current) {
+  var v = prompt('当前加分: ' + current.toFixed(2) + '\n输入新加分（范围 -1 到 1，0 = 不加）:', current.toFixed(2));
+  if (v === null) return;
+  var boost = parseFloat(v);
+  if (isNaN(boost)) { alert('请输入数字'); return; }
+  fetch('/boost/' + paperId, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({boost: boost})
+  }).then(r => r.json()).then(d => {
+    if (d.ok) { location.reload(); } else { alert('保存失败'); }
+  });
+}
+</script>
 </body>
 </html>"""
 
@@ -125,6 +150,24 @@ _DETAIL_HTML = """<!DOCTYPE html>
 </div>
 <div class="section"><h3>摘要</h3><p>{{ paper.abstract or '(无)' }}</p></div>
 
+<div class="section" id="tag-section">
+  <h3>标签</h3>
+  <div id="tag-list">
+    {% for tag in tags %}
+    <span class="badge" style="background:#edf2ff;color:#364fc7;margin-right:4px;cursor:pointer" onclick="removeTag('{{ paper.id }}','{{ tag }}')">{{ tag }} ✕</span>
+    {% endfor %}
+  </div>
+  <div style="margin-top:8px;display:flex;gap:6px;align-items:center">
+    <input id="new-tag" list="all-tags-list" placeholder="添加标签..." style="padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:13px">
+    <datalist id="all-tags-list">
+      {% for t in all_tags %}
+      <option value="{{ t.name }}">
+      {% endfor %}
+    </datalist>
+    <button class="btn btn-save" style="padding:4px 10px" onclick="addTag()">添加</button>
+  </div>
+</div>
+
 {% if summary %}
 <div class="section"><h3>核心问题</h3><p>{{ summary.problem }}</p></div>
 <div class="section"><h3>Innovation</h3><p>{{ summary.innovation }}</p></div>
@@ -153,6 +196,24 @@ function saveThoughts() {
     body: JSON.stringify({thoughts: document.getElementById('thoughts').value})
   }).then(r=>r.json()).then(d=>{ if(d.ok) alert('已保存'); else alert('保存失败'); });
 }
+function addTag() {
+  var tag = document.getElementById('new-tag').value.trim();
+  if (!tag) return;
+  fetch('/tags/{{ paper.id }}', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({tag: tag})
+  }).then(r => r.json()).then(d => {
+    if (d.ok) location.reload(); else alert('添加失败');
+  });
+}
+function removeTag(paperId, tagName) {
+  if (!confirm('删除标签 "' + tagName + '"？')) return;
+  fetch('/tags/' + paperId + '/' + tagName, {method: 'DELETE'})
+    .then(r => r.json()).then(d => {
+      if (d.ok) location.reload(); else alert('删除失败');
+    });
+}
 </script>
 </body>
 </html>"""
@@ -169,10 +230,22 @@ def index():
     year   = request.args.get("year", "")
     label  = request.args.get("label", "")
     status = request.args.get("status", "")
+    tag    = request.args.get("tag", "")
+    all_tags = get_all_tags()
 
     if q:
         papers = search_papers(q)
         # Apply any active dropdown filters on top of the text search results
+        if venue:
+            papers = [p for p in papers if p.get("venue") == venue]
+        if year:
+            papers = [p for p in papers if str(p.get("year") or "") == year]
+        if label:
+            papers = [p for p in papers if p.get("relevance_label") == label]
+        if status:
+            papers = [p for p in papers if p.get("status") == status]
+    elif tag:
+        papers = get_papers_by_tag(tag)
         if venue:
             papers = [p for p in papers if p.get("venue") == venue]
         if year:
@@ -191,6 +264,7 @@ def index():
     return render_template_string(
         _LIST_HTML, papers=papers,
         q=q, venue=venue, year=year, label=label, status=status,
+        tag=tag, all_tags=all_tags,
     )
 
 
@@ -201,7 +275,10 @@ def paper_detail(paper_id):
     if not paper:
         return "Paper not found", 404
     summary = get_summary(paper_id)
-    return render_template_string(_DETAIL_HTML, paper=paper, summary=summary)
+    tags = get_tags_for_paper(paper_id)
+    all_tags = get_all_tags()
+    return render_template_string(_DETAIL_HTML, paper=paper, summary=summary,
+                                  tags=tags, all_tags=all_tags)
 
 
 @app.route("/open_pdf/<path:paper_id>", methods=["POST"])

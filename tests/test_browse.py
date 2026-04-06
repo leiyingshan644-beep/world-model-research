@@ -23,19 +23,22 @@ def _paper(**kwargs):
 
 def test_index_returns_200(client):
     with patch("browse.get_papers", return_value=[]):
-        resp = client.get("/")
+        with patch("browse.get_all_tags", return_value=[]):
+            resp = client.get("/")
     assert resp.status_code == 200
 
 
 def test_index_shows_paper_title(client):
     with patch("browse.get_papers", return_value=[_paper()]):
-        resp = client.get("/")
+        with patch("browse.get_all_tags", return_value=[]):
+            resp = client.get("/")
     assert b"DreamerV3" in resp.data
 
 
 def test_index_search_calls_search_papers(client):
     with patch("browse.search_papers", return_value=[]) as mock_search:
-        client.get("/?q=dreamer")
+        with patch("browse.get_all_tags", return_value=[]):
+            client.get("/?q=dreamer")
     mock_search.assert_called_once_with("dreamer")
 
 
@@ -47,7 +50,9 @@ def test_paper_detail_200(client):
     }
     with patch("browse.get_papers", return_value=[paper]):
         with patch("browse.get_summary", return_value=summary):
-            resp = client.get("/paper/2301.04589")
+            with patch("browse.get_tags_for_paper", return_value=[]):
+                with patch("browse.get_all_tags", return_value=[]):
+                    resp = client.get("/paper/2301.04589")
     assert resp.status_code == 200
     assert b"DreamerV3" in resp.data
     assert b"Innovation" in resp.data
@@ -83,7 +88,8 @@ def test_index_search_applies_venue_filter(client):
         _paper(id="b", title="Other", venue="icml"),
     ]
     with patch("browse.search_papers", return_value=papers):
-        resp = client.get("/?q=world&venue=neurips")
+        with patch("browse.get_all_tags", return_value=[]):
+            resp = client.get("/?q=world&venue=neurips")
     assert b"DreamerV3" in resp.data
     assert b"Other" not in resp.data
 
@@ -145,3 +151,23 @@ def test_set_boost_returns_ok(client):
     assert resp.status_code == 200
     assert resp.get_json()["ok"] is True
     mock_update.assert_called_once_with("2301.04589", manual_boost=pytest.approx(0.3))
+
+
+def test_list_page_has_boost_buttons(client):
+    with patch("browse.get_papers", return_value=[_paper()]):
+        with patch("browse.get_all_tags", return_value=[]):
+            resp = client.get("/")
+    assert b"boost-btn" in resp.data
+
+
+def test_detail_page_has_tag_section(client):
+    paper = _paper()
+    summary = {"paper_id": "2301.04589", "problem": "P", "innovation": "I",
+               "method": "M", "results": "R", "gaps": "G", "my_thoughts": ""}
+    with patch("browse.get_papers", return_value=[paper]):
+        with patch("browse.get_summary", return_value=summary):
+            with patch("browse.get_tags_for_paper", return_value=["planning"]):
+                with patch("browse.get_all_tags", return_value=[{"name": "planning", "count": 1}]):
+                    resp = client.get("/paper/2301.04589")
+    assert b"tag-section" in resp.data
+    assert b"planning" in resp.data
