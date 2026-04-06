@@ -52,8 +52,14 @@ def download_pdf(paper: dict, pdf_dir: str) -> tuple:
     return None, "failed"
 
 
-def run_download(high_only: bool = False, limit: int = None):
-    if high_only:
+def run_download(high_only: bool = False, limit: int = None, paper_id: str = None):
+    if paper_id:
+        clean_id = paper_id.replace("arxiv:", "")
+        papers = [p for p in get_papers() if p["id"] == clean_id]
+        if not papers:
+            print(f"Paper not found in DB: {clean_id}")
+            return
+    elif high_only:
         papers = get_papers(label="high")
     else:
         all_papers = get_papers()
@@ -89,5 +95,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download paper PDFs")
     parser.add_argument("--high",  action="store_true", help="Only download high-relevance papers")
     parser.add_argument("--limit", type=int, help="Max papers to download this run")
+    parser.add_argument("--id",    dest="paper_id", help="Download a single paper, e.g. arxiv:2301.04589")
     args = parser.parse_args()
-    run_download(high_only=args.high, limit=args.limit)
+    run_download(high_only=args.high, limit=args.limit, paper_id=args.paper_id)
