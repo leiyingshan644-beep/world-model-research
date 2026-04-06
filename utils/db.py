@@ -51,6 +51,26 @@ def init_db():
                 FOREIGN KEY (paper_id) REFERENCES papers(id)
             )
         """)
+        # Tags
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS tags (
+                name TEXT PRIMARY KEY
+            )
+        """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS paper_tags (
+                paper_id TEXT NOT NULL,
+                tag_name TEXT NOT NULL,
+                PRIMARY KEY (paper_id, tag_name),
+                FOREIGN KEY (paper_id) REFERENCES papers(id),
+                FOREIGN KEY (tag_name) REFERENCES tags(name)
+            )
+        """)
+        # Manual boost column migration
+        try:
+            c.execute("ALTER TABLE papers ADD COLUMN manual_boost REAL DEFAULT 0.0")
+        except Exception:
+            pass
         conn.commit()
     finally:
         conn.close()
@@ -106,7 +126,7 @@ def get_papers(venue=None, year=None, label=None, status=None):
         if status is not None:
             query += " AND status = ?"
             params.append(status)
-        query += " ORDER BY relevance_score DESC"
+        query += " ORDER BY (relevance_score + COALESCE(manual_boost, 0)) DESC"
         rows = conn.execute(query, params).fetchall()
         return [dict(r) for r in rows]
     finally:
@@ -177,6 +197,73 @@ def update_my_thoughts(paper_id: str, thoughts: str):
             (thoughts, paper_id),
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+def add_tag_to_paper(paper_id: str, tag_name: str):
+    conn = get_conn()
+    try:
+        conn.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (tag_name,))
+        conn.execute(
+            "INSERT OR IGNORE INTO paper_tags (paper_id, tag_name) VALUES (?, ?)",
+            (paper_id, tag_name),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def remove_tag_from_paper(paper_id: str, tag_name: str):
+    conn = get_conn()
+    try:
+        conn.execute(
+            "DELETE FROM paper_tags WHERE paper_id = ? AND tag_name = ?",
+            (paper_id, tag_name),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_tags_for_paper(paper_id: str) -> list:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT tag_name FROM paper_tags WHERE paper_id = ? ORDER BY tag_name",
+            (paper_id,),
+        ).fetchall()
+        return [r[0] for r in rows]
+    finally:
+        conn.close()
+
+
+def get_all_tags() -> list:
+    conn = get_conn()
+    try:
+        rows = conn.execute("""
+            SELECT t.name, COUNT(pt.paper_id) as count
+            FROM tags t
+            LEFT JOIN paper_tags pt ON t.name = pt.tag_name
+            GROUP BY t.name
+            ORDER BY count DESC, t.name
+        """).fetchall()
+        return [{"name": r[0], "count": r[1]} for r in rows]
+    finally:
+        conn.close()
+
+
+def get_papers_by_tag(tag_name: str) -> list:
+    conn = get_conn()
+    try:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("""
+            SELECT p.* FROM papers p
+            JOIN paper_tags pt ON p.id = pt.paper_id
+            WHERE pt.tag_name = ?
+            ORDER BY (p.relevance_score + COALESCE(p.manual_boost, 0)) DESC
+        """, (tag_name,)).fetchall()
+        return [dict(r) for r in rows]
     finally:
         conn.close()
 

@@ -97,3 +97,72 @@ def test_upsert_summary_preserves_my_thoughts():
     s = get_summary("p1")
     assert s["my_thoughts"] == "important insight!"
     assert s["problem"] == "P2"  # AI content updated
+
+
+def test_add_and_get_tags(tmp_path, monkeypatch):
+    import utils.db as db_module
+    monkeypatch.setattr(db_module, "DB_PATH", str(tmp_path / "test.db"))
+    db_module.init_db()
+    paper = {"id": "abc", "title": "T", "authors": [], "year": 2023,
+             "venue": "neurips", "source": "", "doi": "", "abstract": "",
+             "arxiv_id": "abc", "pdf_url": None}
+    db_module.upsert_paper(paper)
+    db_module.add_tag_to_paper("abc", "embodied")
+    db_module.add_tag_to_paper("abc", "planning")
+    tags = db_module.get_tags_for_paper("abc")
+    assert set(tags) == {"embodied", "planning"}
+
+def test_remove_tag(tmp_path, monkeypatch):
+    import utils.db as db_module
+    monkeypatch.setattr(db_module, "DB_PATH", str(tmp_path / "test.db"))
+    db_module.init_db()
+    paper = {"id": "abc", "title": "T", "authors": [], "year": 2023,
+             "venue": "neurips", "source": "", "doi": "", "abstract": "",
+             "arxiv_id": "abc", "pdf_url": None}
+    db_module.upsert_paper(paper)
+    db_module.add_tag_to_paper("abc", "embodied")
+    db_module.remove_tag_from_paper("abc", "embodied")
+    assert db_module.get_tags_for_paper("abc") == []
+
+def test_get_all_tags(tmp_path, monkeypatch):
+    import utils.db as db_module
+    monkeypatch.setattr(db_module, "DB_PATH", str(tmp_path / "test.db"))
+    db_module.init_db()
+    for pid, tag in [("a", "planning"), ("b", "planning"), ("c", "embodied")]:
+        p = {"id": pid, "title": "T", "authors": [], "year": 2023,
+             "venue": "neurips", "source": "", "doi": "", "abstract": "",
+             "arxiv_id": pid, "pdf_url": None}
+        db_module.upsert_paper(p)
+        db_module.add_tag_to_paper(pid, tag)
+    all_tags = db_module.get_all_tags()
+    names = [t["name"] for t in all_tags]
+    assert "planning" in names and "embodied" in names
+    planning = next(t for t in all_tags if t["name"] == "planning")
+    assert planning["count"] == 2
+
+def test_get_papers_by_tag(tmp_path, monkeypatch):
+    import utils.db as db_module
+    monkeypatch.setattr(db_module, "DB_PATH", str(tmp_path / "test.db"))
+    db_module.init_db()
+    for pid in ["x", "y", "z"]:
+        p = {"id": pid, "title": pid, "authors": [], "year": 2023,
+             "venue": "neurips", "source": "", "doi": "", "abstract": "",
+             "arxiv_id": pid, "pdf_url": None}
+        db_module.upsert_paper(p)
+    db_module.add_tag_to_paper("x", "planning")
+    db_module.add_tag_to_paper("y", "planning")
+    papers = db_module.get_papers_by_tag("planning")
+    assert {p["id"] for p in papers} == {"x", "y"}
+
+def test_manual_boost(tmp_path, monkeypatch):
+    import pytest
+    import utils.db as db_module
+    monkeypatch.setattr(db_module, "DB_PATH", str(tmp_path / "test.db"))
+    db_module.init_db()
+    p = {"id": "abc", "title": "T", "authors": [], "year": 2023,
+         "venue": "neurips", "source": "", "doi": "", "abstract": "",
+         "arxiv_id": "abc", "pdf_url": None}
+    db_module.upsert_paper(p)
+    db_module.update_paper("abc", manual_boost=0.3)
+    papers = db_module.get_papers()
+    assert papers[0]["manual_boost"] == pytest.approx(0.3)
