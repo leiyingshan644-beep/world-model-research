@@ -98,3 +98,50 @@ def test_save_thoughts_updates_db(client):
     assert resp.status_code == 200
     assert resp.get_json()["ok"] is True
     mock_update.assert_called_once_with("2301.04589", "very promising direction")
+
+
+def test_add_tag_returns_ok(client):
+    with patch("browse.add_tag_to_paper") as mock_add:
+        resp = client.post(
+            "/tags/2301.04589",
+            json={"tag": "planning"},
+            content_type="application/json",
+        )
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+    mock_add.assert_called_once_with("2301.04589", "planning")
+
+
+def test_remove_tag_returns_ok(client):
+    with patch("browse.remove_tag_from_paper") as mock_rm:
+        resp = client.delete("/tags/2301.04589/planning")
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+    mock_rm.assert_called_once_with("2301.04589", "planning")
+
+
+def test_get_tags_for_paper(client):
+    with patch("browse.get_tags_for_paper", return_value=["planning", "embodied"]):
+        resp = client.get("/tags/2301.04589")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"tags": ["planning", "embodied"]}
+
+
+def test_get_all_tags(client):
+    with patch("browse.get_all_tags", return_value=[{"name": "planning", "count": 3}]):
+        resp = client.get("/tags")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["tags"][0]["name"] == "planning"
+
+
+def test_set_boost_returns_ok(client):
+    with patch("browse.update_paper") as mock_update:
+        resp = client.post(
+            "/boost/2301.04589",
+            json={"boost": 0.3},
+            content_type="application/json",
+        )
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+    mock_update.assert_called_once_with("2301.04589", manual_boost=pytest.approx(0.3))

@@ -3,7 +3,9 @@ import subprocess
 
 from flask import Flask, render_template_string, request, jsonify
 
-from utils.db import get_papers, get_summary, search_papers, update_my_thoughts
+from utils.db import (get_papers, get_summary, search_papers, update_my_thoughts,
+                      update_paper, add_tag_to_paper, remove_tag_from_paper,
+                      get_tags_for_paper, get_all_tags, get_papers_by_tag)
 
 app = Flask(__name__)
 
@@ -217,6 +219,43 @@ def save_thoughts(paper_id):
     data = request.get_json() or {}
     update_my_thoughts(paper_id, data.get("thoughts", ""))
     return jsonify({"ok": True})
+
+
+@app.route("/tags", methods=["GET"])
+def list_tags():
+    return jsonify({"tags": get_all_tags()})
+
+
+@app.route("/tags/<path:paper_id>", methods=["GET"])
+def paper_tags_get(paper_id):
+    return jsonify({"tags": get_tags_for_paper(paper_id)})
+
+
+@app.route("/tags/<path:paper_id>", methods=["POST"])
+def paper_tags_add(paper_id):
+    data = request.get_json() or {}
+    tag = data.get("tag", "").strip()
+    if tag:
+        add_tag_to_paper(paper_id, tag)
+    return jsonify({"ok": bool(tag)})
+
+
+@app.route("/tags/<path:paper_id>/<tag_name>", methods=["DELETE"])
+def paper_tags_remove(paper_id, tag_name):
+    remove_tag_from_paper(paper_id, tag_name)
+    return jsonify({"ok": True})
+
+
+@app.route("/boost/<path:paper_id>", methods=["POST"])
+def set_boost(paper_id):
+    data = request.get_json() or {}
+    try:
+        boost = float(data.get("boost", 0))
+        boost = max(-1.0, min(1.0, boost))
+    except (TypeError, ValueError):
+        boost = 0.0
+    update_paper(paper_id, manual_boost=boost)
+    return jsonify({"ok": True, "boost": boost})
 
 
 if __name__ == "__main__":
