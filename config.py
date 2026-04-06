@@ -5,9 +5,9 @@ DB_PATH  = os.path.join(BASE_DIR, "papers.db")
 PDF_DIR  = os.path.join(BASE_DIR, "pdfs")
 
 # AI interface (OpenAI-compatible)
-LLM_BASE_URL = "https://api.deepseek.com/v1"   # replace with Qwen URL if needed
-LLM_API_KEY  = "your-api-key-here"              # fill in before using summarize.py
-LLM_MODEL    = "deepseek-chat"
+LLM_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"  # 阿里百炼
+LLM_API_KEY  = "sk-c32c17f206eb42b2a065d166f34a51b0"
+LLM_MODEL    = "qwen-plus"
 
 # Semantic Scholar (optional — higher rate limit with key)
 S2_API_KEY = ""

@@ -5,9 +5,10 @@ from flask import Flask, render_template_string, request, jsonify
 
 from utils.db import (get_papers, get_summary, search_papers, update_my_thoughts,
                       update_paper, add_tag_to_paper, remove_tag_from_paper,
-                      get_tags_for_paper, get_all_tags, get_papers_by_tag)
+                      get_tags_for_paper, get_all_tags, get_papers_by_tag, init_db)
 
 app = Flask(__name__)
+init_db()  # create/migrate tables on every startup (idempotent)
 
 # ---------------------------------------------------------------------------
 # Templates (inline — no separate template files needed)
