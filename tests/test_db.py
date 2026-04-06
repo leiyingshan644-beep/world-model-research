@@ -82,3 +82,18 @@ def test_search_papers():
                   "abstract": "latent world model for RL", "arxiv_id": "z", "pdf_url": None})
     assert len(search_papers("dreamer")) == 1
     assert len(search_papers("transformer")) == 0
+
+def test_upsert_summary_preserves_my_thoughts():
+    from utils.db import upsert_paper, upsert_summary, update_my_thoughts, get_summary
+    upsert_paper(_paper())
+    upsert_summary({"paper_id": "p1", "problem": "P", "innovation": "I",
+                    "method": "M", "results": "R", "gaps": "G",
+                    "model_used": "m", "created_at": "2026-01-01T00:00:00"})
+    update_my_thoughts("p1", "important insight!")
+    # Re-run summarize — should NOT erase my_thoughts
+    upsert_summary({"paper_id": "p1", "problem": "P2", "innovation": "I2",
+                    "method": "M2", "results": "R2", "gaps": "G2",
+                    "model_used": "m2", "created_at": "2026-01-02T00:00:00"})
+    s = get_summary("p1")
+    assert s["my_thoughts"] == "important insight!"
+    assert s["problem"] == "P2"  # AI content updated
