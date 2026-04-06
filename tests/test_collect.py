@@ -2,51 +2,59 @@ from unittest.mock import patch, MagicMock
 
 
 # ---------------------------------------------------------------------------
-# fetch_from_openreview
+# fetch_from_openalex
 # ---------------------------------------------------------------------------
 
-def test_openreview_returns_empty_on_http_error():
-    from collect import fetch_from_openreview
+def test_openalex_returns_empty_on_http_error():
+    from collect import fetch_from_openalex
     with patch("collect.requests.get") as mock_get:
         mock_get.return_value.ok = False
         mock_get.return_value.status_code = 500
-        result = fetch_from_openreview("neurips", 2023)
+        result = fetch_from_openalex(["neurips"], (2023, 2023))
     assert result == []
 
 
-def test_openreview_filters_by_keyword():
-    from collect import fetch_from_openreview
-    notes = [
+def test_openalex_filters_to_target_venues():
+    from collect import fetch_from_openalex
+    works = [
         {
-            "id": "note1",
-            "content": {
-                "title":    {"value": "DreamerV3: World Model for RL"},
-                "abstract": {"value": "A generative world model approach."},
-                "authors":  {"value": ["Author A"]},
-                "pdf":      {"value": "/pdf/note1.pdf"},
+            "id": "https://openalex.org/W1",
+            "title": "DreamerV3: World Model for RL",
+            "abstract_inverted_index": {"world": [0], "model": [1]},
+            "publication_year": 2023,
+            "authorships": [{"author": {"display_name": "Author A"}}],
+            "primary_location": {
+                "source": {"display_name": "Neural Information Processing Systems"},
+                "pdf_url": None,
             },
+            "ids": {"arxiv": "https://arxiv.org/abs/2301.04589", "doi": None},
         },
         {
-            "id": "note2",
-            "content": {
-                "title":    {"value": "Unrelated Vision Paper"},
-                "abstract": {"value": "Nothing relevant here."},
-                "authors":  {"value": ["Author B"]},
-                "pdf":      {"value": "/pdf/note2.pdf"},
+            "id": "https://openalex.org/W2",
+            "title": "Some Unrelated Paper",
+            "abstract_inverted_index": {},
+            "publication_year": 2023,
+            "authorships": [],
+            "primary_location": {
+                "source": {"display_name": "Some Workshop"},
+                "pdf_url": None,
             },
+            "ids": {},
         },
     ]
-    response = MagicMock()
-    response.ok = True
-    response.json.return_value = {"notes": notes}
-
-    with patch("collect.requests.get", return_value=response):
-        result = fetch_from_openreview("neurips", 2023)
+    resp = MagicMock()
+    resp.ok = True
+    resp.json.return_value = {
+        "results": works,
+        "meta": {"count": 2, "next_cursor": None},
+    }
+    with patch("collect.requests.get", return_value=resp):
+        result = fetch_from_openalex(["neurips"], (2023, 2023))
 
     assert len(result) == 1
-    assert "DreamerV3" in result[0]["title"]
     assert result[0]["venue"] == "neurips"
-    assert result[0]["year"] == 2023
+    assert result[0]["arxiv_id"] == "2301.04589"
+    assert result[0]["source"] == "openalex"
 
 
 # ---------------------------------------------------------------------------
@@ -65,21 +73,19 @@ def test_cvf_returns_empty_on_http_error():
 def test_cvf_parses_matching_titles():
     from collect import fetch_from_cvf
     html = """<html><body><dl>
-      <dt class="ptitle"><a href="/content/cvpr2023/foo">World Model for Vision Tasks</a></dt>
+      <dt class="ptitle"><a href="/content/cvpr2023/foo">World Model for Vision</a></dt>
       <dd><a href="/content/cvpr2023/foo/foo.pdf">pdf</a></dd>
-      <dt class="ptitle"><a href="/content/cvpr2023/bar">Generic Image Segmentation</a></dt>
+      <dt class="ptitle"><a href="/content/cvpr2023/bar">Generic Segmentation</a></dt>
       <dd><a href="/content/cvpr2023/bar/bar.pdf">pdf</a></dd>
     </dl></body></html>"""
-    response = MagicMock()
-    response.ok = True
-    response.text = html
-
-    with patch("collect.requests.get", return_value=response):
+    resp = MagicMock()
+    resp.ok = True
+    resp.text = html
+    with patch("collect.requests.get", return_value=resp):
         result = fetch_from_cvf(2023)
-
     assert len(result) == 1
-    assert "World Model" in result[0]["title"]
     assert result[0]["venue"] == "cvpr"
+    assert result[0]["source"] == "cvf"
 
 
 # ---------------------------------------------------------------------------
@@ -93,15 +99,14 @@ def test_fiblabs_parses_arxiv_links():
 | [DreamerV3](https://arxiv.org/abs/2301.04589) | NeurIPS 2023 |
 | [TD-MPC2](https://arxiv.org/abs/2310.16828) | ICLR 2024 |
 """
-    mock_resp = MagicMock()
-    mock_resp.ok = True
-    mock_resp.text = fake_readme
-    with patch("collect.requests.get", return_value=mock_resp):
+    resp = MagicMock()
+    resp.ok = True
+    resp.text = fake_readme
+    with patch("collect.requests.get", return_value=resp):
         papers = fetch_from_fiblabs()
     assert len(papers) == 2
-    ids = {p["arxiv_id"] for p in papers}
-    assert "2301.04589" in ids
-    assert "2310.16828" in ids
+    assert {p["arxiv_id"] for p in papers} == {"2301.04589", "2310.16828"}
+    assert all(p["source"] == "fiblabs" for p in papers)
 
 
 def test_fiblabs_returns_empty_on_error():
@@ -114,6 +119,50 @@ def test_fiblabs_returns_empty_on_error():
 
 
 # ---------------------------------------------------------------------------
+# crossref_via_openalex
+# ---------------------------------------------------------------------------
+
+def test_crossref_updates_venue_for_unknown_papers(tmp_path, monkeypatch):
+    import utils.db as db_module
+    monkeypatch.setattr(db_module, "DB_PATH", str(tmp_path / "test.db"))
+    db_module.init_db()
+
+    # Insert an arXiv paper with no venue
+    paper = {
+        "id": "2301.04589", "title": "World model paper", "authors": [],
+        "year": 2023, "venue": None, "source": "arxiv", "doi": "",
+        "abstract": "world model", "arxiv_id": "2301.04589",
+        "pdf_url": "https://arxiv.org/pdf/2301.04589",
+    }
+    db_module.upsert_paper(paper)
+
+    oa_resp = MagicMock()
+    oa_resp.ok = True
+    oa_resp.json.return_value = {
+        "results": [{
+            "ids": {
+                "arxiv": "https://arxiv.org/abs/2301.04589",
+                "doi":   "https://doi.org/10.0/test",
+            },
+            "primary_location": {
+                "source": {"display_name": "Neural Information Processing Systems"}
+            },
+            "publication_year": 2023,
+        }]
+    }
+
+    papers_dict = {"2301.04589": paper}
+    with patch("collect.requests.get", return_value=oa_resp):
+        from collect import crossref_via_openalex
+        updated = crossref_via_openalex(papers_dict)
+
+    assert updated == 1
+    stored = db_module.get_papers()
+    assert stored[0]["venue"] == "neurips"
+    assert stored[0]["doi"] == "10.0/test"
+
+
+# ---------------------------------------------------------------------------
 # collect()
 # ---------------------------------------------------------------------------
 
@@ -122,19 +171,21 @@ def test_collect_deduplicates_and_writes_to_db(tmp_path, monkeypatch):
     monkeypatch.setattr(db_module, "DB_PATH", str(tmp_path / "test.db"))
     db_module.init_db()
 
-    fake_paper = {
+    fake = {
         "id": "2301.04589", "title": "DreamerV3 world model", "authors": [],
-        "year": 2023, "venue": "neurips", "abstract": "world model paper.",
-        "arxiv_id": "2301.04589", "pdf_url": None,
+        "year": 2023, "venue": "neurips", "source": "openalex", "doi": "",
+        "abstract": "world model paper.", "arxiv_id": "2301.04589", "pdf_url": None,
     }
 
-    with patch("collect.fetch_from_openreview", return_value=[fake_paper]):
-        with patch("collect.fetch_from_cvf",        return_value=[fake_paper]):
-            with patch("collect.fetch_from_arxiv",  return_value=[fake_paper]):
-                with patch("collect.fetch_from_fiblabs", return_value=[fake_paper]):
-                    from collect import collect
-                    collect()
+    with patch("collect.fetch_from_openalex",  return_value=[fake]):
+        with patch("collect.fetch_from_cvf",        return_value=[fake]):
+            with patch("collect.fetch_from_arxiv",  return_value=[fake]):
+                with patch("collect.fetch_from_fiblabs", return_value=[fake]):
+                    with patch("collect.crossref_via_openalex", return_value=0):
+                        from collect import collect
+                        collect()
 
     papers = db_module.get_papers()
     assert len(papers) == 1
     assert papers[0]["id"] == "2301.04589"
+    assert papers[0]["source"] == "openalex"

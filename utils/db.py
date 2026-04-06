@@ -20,6 +20,8 @@ def init_db():
                 authors          TEXT,
                 year             INTEGER,
                 venue            TEXT,
+                source           TEXT    DEFAULT '',
+                doi              TEXT    DEFAULT '',
                 abstract         TEXT,
                 arxiv_id         TEXT,
                 pdf_url          TEXT,
@@ -29,6 +31,12 @@ def init_db():
                 status           TEXT    DEFAULT 'collected'
             )
         """)
+        # Migrate existing databases that predate source/doi columns
+        for col, defn in [("source", "TEXT DEFAULT ''"), ("doi", "TEXT DEFAULT ''")]:
+            try:
+                c.execute(f"ALTER TABLE papers ADD COLUMN {col} {defn}")
+            except Exception:
+                pass
         c.execute("""
             CREATE TABLE IF NOT EXISTS summaries (
                 paper_id    TEXT PRIMARY KEY,
@@ -53,14 +61,17 @@ def upsert_paper(paper: dict):
     try:
         conn.execute(
             """INSERT OR IGNORE INTO papers
-               (id, title, authors, year, venue, abstract, arxiv_id, pdf_url, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'collected')""",
+               (id, title, authors, year, venue, source, doi,
+                abstract, arxiv_id, pdf_url, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'collected')""",
             (
                 paper["id"],
                 paper["title"],
                 json.dumps(paper.get("authors", [])),
                 paper.get("year"),
                 paper.get("venue"),
+                paper.get("source", ""),
+                paper.get("doi", ""),
                 paper.get("abstract", ""),
                 paper.get("arxiv_id"),
                 paper.get("pdf_url"),
