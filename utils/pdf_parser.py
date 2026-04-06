@@ -12,8 +12,9 @@ def extract_text(pdf_path: str, max_chars: int = MAX_CHARS) -> str:
             if not text:
                 continue
             remaining = max_chars - total
-            parts.append(text[:remaining])
-            total += len(text)
+            trimmed = text[:remaining]
+            parts.append(trimmed)
+            total += len(trimmed)
             if total >= max_chars:
                 break
     return "\n".join(parts)[:max_chars]
