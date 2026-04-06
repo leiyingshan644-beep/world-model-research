@@ -15,11 +15,52 @@ _WEIGHTS = {
 }
 _MAX_RAW = sum(_WEIGHTS.values())  # normalisation denominator
 
+# Auto-label thresholds (fraction of _MAX_RAW)
+_THRESH_HIGH = 0.20   # score ≥ 0.20 → high
+_THRESH_MID  = 0.08   # score ≥ 0.08 → mid   (else → low)
+
 
 def score_paper(paper: dict) -> float:
     text = f"{paper.get('title', '')} {paper.get('abstract', '')}".lower()
     raw = sum(w for kw, w in _WEIGHTS.items() if kw in text)
     return min(raw / _MAX_RAW, 1.0)
+
+
+def _print_filter_report(papers: list, label_counts: dict) -> None:
+    scored = sorted(papers, key=lambda p: p["relevance_score"], reverse=True)
+    buckets = {
+        "≥ 0.50": sum(1 for p in papers if p["relevance_score"] >= 0.50),
+        "≥ 0.30": sum(1 for p in papers if 0.30 <= p["relevance_score"] < 0.50),
+        "≥ 0.20": sum(1 for p in papers if 0.20 <= p["relevance_score"] < 0.30),
+        "≥ 0.08": sum(1 for p in papers if 0.08 <= p["relevance_score"] < 0.20),
+        "< 0.08": sum(1 for p in papers if p["relevance_score"] < 0.08),
+    }
+
+    w = 52
+    print("\n" + "━" * w)
+    print(f"  Filter Report  —  {len(papers)} papers scored")
+    print("━" * w)
+
+    print("\n  Score distribution:")
+    bar_scale = max(buckets.values()) or 1
+    for label_str, cnt in buckets.items():
+        bar = "█" * int(cnt / bar_scale * 20)
+        print(f"    {label_str}   {cnt:>4}  {bar}")
+
+    print(f"\n  Auto-labels assigned (high ≥ {_THRESH_HIGH:.2f} / mid ≥ {_THRESH_MID:.2f}):")
+    for lbl in ("high", "mid", "low"):
+        n   = label_counts[lbl]
+        bar = "█" * (n // max(1, len(papers) // 40))
+        print(f"    {lbl:<5}  {n:>4}  {bar}")
+
+    print(f"\n  Top 10 highest-scored papers:")
+    for p in scored[:10]:
+        venue = (p.get("venue") or "?").upper()
+        year  = p.get("year") or "?"
+        title = p.get("title", "")[:55]
+        print(f"    {p['relevance_score']:.2f}  [{venue} {year}]  {title}")
+
+    print("━" * w + "\n")
 
 
 def run_filter(auto: bool = False, review: bool = False):
@@ -34,7 +75,19 @@ def run_filter(auto: bool = False, review: bool = False):
         p["relevance_score"] = s
 
     if auto:
-        print(f"Scored {len(papers)} papers.")
+        label_counts = {"high": 0, "mid": 0, "low": 0}
+        for p in papers:
+            s = p["relevance_score"]
+            if s >= _THRESH_HIGH:
+                label = "high"
+            elif s >= _THRESH_MID:
+                label = "mid"
+            else:
+                label = "low"
+            update_paper(p["id"], relevance_label=label)
+            label_counts[label] += 1
+
+        _print_filter_report(papers, label_counts)
         return
 
     unlabeled = sorted(

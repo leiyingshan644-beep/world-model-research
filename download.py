@@ -30,12 +30,22 @@ def download_pdf(paper: dict, pdf_dir: str) -> tuple:
     for url in urls:
         try:
             resp = requests.get(url, timeout=30, stream=True)
+            if not resp.ok:
+                continue
             content_type = resp.headers.get("content-type", "")
-            if resp.ok and "pdf" in content_type.lower():
-                with open(dest_path, "wb") as f:
-                    for chunk in resp.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                return dest_path, "downloaded"
+            # Accept application/pdf, octet-stream, or unknown content-type;
+            # reject obvious HTML responses (arXiv abstract pages, captchas)
+            if "html" in content_type.lower():
+                continue
+            with open(dest_path, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            # Verify it's actually a PDF (magic bytes)
+            with open(dest_path, "rb") as f:
+                if f.read(4) != b"%PDF":
+                    os.remove(dest_path)
+                    continue
+            return dest_path, "downloaded"
         except requests.RequestException:
             continue
 
