@@ -470,14 +470,77 @@ def collect(venues=None, year=None):
 
 
 # ---------------------------------------------------------------------------
+# Single-paper collect  (--url)
+# ---------------------------------------------------------------------------
+def _parse_arxiv_id(url_or_id: str) -> str | None:
+    """Accept full URLs, bare IDs, or 'arxiv:XXXX' prefixes."""
+    # Strip prefix
+    s = url_or_id.strip().replace("arxiv:", "")
+    # Match bare ID like 2506.21976 or 2506.21976v2
+    m = re.search(r"(\d{4}\.\d{4,5})", s)
+    return m.group(1) if m else None
+
+
+def collect_single(url_or_id: str) -> None:
+    """Fetch one arXiv paper by URL or ID and upsert it into the DB."""
+    init_db()
+
+    arxiv_id = _parse_arxiv_id(url_or_id)
+    if not arxiv_id:
+        print(f"Could not parse arXiv ID from: {url_or_id}")
+        return
+
+    print(f"  Fetching arXiv:{arxiv_id} ...")
+    client = arxiv_pkg.Client(num_retries=3, delay_seconds=2)
+    search = arxiv_pkg.Search(id_list=[arxiv_id])
+    results = list(client.results(search))
+
+    if not results:
+        print(f"  Not found on arXiv: {arxiv_id}")
+        return
+
+    result  = results[0]
+    clean_id = result.entry_id.split("/")[-1].split("v")[0]
+    venue   = _detect_venue_from_text(result.comment or "", result.journal_ref or "")
+
+    paper = {
+        "id":       clean_id,
+        "title":    result.title,
+        "authors":  [a.name for a in result.authors],
+        "year":     result.published.year,
+        "venue":    venue,
+        "source":   "arxiv_manual",
+        "doi":      "",
+        "abstract": result.summary,
+        "arxiv_id": clean_id,
+        "pdf_url":  f"https://arxiv.org/pdf/{clean_id}",
+    }
+    upsert_paper(paper)
+
+    # Try to confirm venue via OpenAlex
+    crossref_via_openalex({clean_id: paper})
+    venue_confirmed = paper.get("venue")
+
+    print(f"  ✓ Added: {result.title[:70]}")
+    print(f"    Year: {paper['year']}  Venue: {venue_confirmed or '(unknown)'}  "
+          f"PDF: https://arxiv.org/pdf/{clean_id}")
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Collect world model paper metadata")
     parser.add_argument("--venue", help="Single venue, e.g. neurips")
     parser.add_argument("--year",  type=int, help="Single year, e.g. 2024")
+    parser.add_argument("--url",   help="Add a single paper by arXiv URL or ID, "
+                                        "e.g. https://arxiv.org/abs/2506.21976")
     args = parser.parse_args()
-    collect(
-        venues=[args.venue] if args.venue else None,
-        year=args.year,
-    )
+
+    if args.url:
+        collect_single(args.url)
+    else:
+        collect(
+            venues=[args.venue] if args.venue else None,
+            year=args.year,
+        )

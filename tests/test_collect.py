@@ -189,3 +189,52 @@ def test_collect_deduplicates_and_writes_to_db(tmp_path, monkeypatch):
     assert len(papers) == 1
     assert papers[0]["id"] == "2301.04589"
     assert papers[0]["source"] == "openalex"
+
+
+# ---------------------------------------------------------------------------
+# collect_single / _parse_arxiv_id
+# ---------------------------------------------------------------------------
+
+def test_parse_arxiv_id_from_full_url():
+    from collect import _parse_arxiv_id
+    assert _parse_arxiv_id("https://arxiv.org/abs/2506.21976") == "2506.21976"
+
+def test_parse_arxiv_id_from_bare_id():
+    from collect import _parse_arxiv_id
+    assert _parse_arxiv_id("2506.21976") == "2506.21976"
+
+def test_parse_arxiv_id_with_prefix():
+    from collect import _parse_arxiv_id
+    assert _parse_arxiv_id("arxiv:2506.21976") == "2506.21976"
+
+def test_parse_arxiv_id_invalid():
+    from collect import _parse_arxiv_id
+    assert _parse_arxiv_id("https://example.com/no-id") is None
+
+def test_collect_single_adds_paper_to_db(tmp_path, monkeypatch):
+    import datetime, utils.db as db_module
+    monkeypatch.setattr(db_module, "DB_PATH", str(tmp_path / "test.db"))
+    db_module.init_db()
+
+    fake_result = MagicMock()
+    fake_result.entry_id     = "https://arxiv.org/abs/2506.21976v1"
+    fake_result.title        = "HunyuanWorld Test Paper"
+    author_mock = MagicMock()
+    author_mock.name = "Author A"
+    fake_result.authors      = [author_mock]
+    fake_result.published    = MagicMock(year=2025)
+    fake_result.summary      = "A world model paper abstract."
+    fake_result.comment      = "NeurIPS 2025"
+    fake_result.journal_ref  = ""
+
+    with patch("collect.arxiv_pkg.Client") as mock_client_cls:
+        mock_client_cls.return_value.results.return_value = iter([fake_result])
+        with patch("collect.crossref_via_openalex", return_value=0):
+            from collect import collect_single
+            collect_single("https://arxiv.org/abs/2506.21976")
+
+    papers = db_module.get_papers()
+    assert len(papers) == 1
+    assert papers[0]["id"] == "2506.21976"
+    assert papers[0]["source"] == "arxiv_manual"
+    assert papers[0]["venue"] == "neurips"
