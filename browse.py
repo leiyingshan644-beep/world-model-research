@@ -38,6 +38,8 @@ _LIST_HTML = """<!DOCTYPE html>
   .badge-collected{background:#f8f9fa;color:#6c757d}
   a{color:#007bff;text-decoration:none}
   a:hover{text-decoration:underline}
+  a.viewed{color:#999}
+  a.viewed:hover{color:#666}
   .count{color:#666;margin-bottom:8px;font-size:14px}
 </style>
 </head>
@@ -84,7 +86,7 @@ _LIST_HTML = """<!DOCTYPE html>
   <tr><th>标题</th><th>会议</th><th>年份</th><th>标记</th><th>状态</th><th>得分</th><th>加分</th></tr>
   {% for p in papers %}
   <tr>
-    <td><a href="{{ url_for('paper_detail', paper_id=p.id) }}">{{ p.title[:80] }}</a></td>
+    <td><a href="{{ url_for('paper_detail', paper_id=p.id) }}" data-paper-id="{{ p.id }}" onclick="beforeNav(this)">{{ p.title[:80] }}</a></td>
     <td>{{ (p.venue or '')|upper }}</td>
     <td>{{ p.year or '' }}</td>
     <td><span class="badge badge-{{ p.relevance_label or '' }}">{{ p.relevance_label or '-' }}</span></td>
@@ -98,6 +100,27 @@ _LIST_HTML = """<!DOCTYPE html>
   {% endfor %}
 </table>
 <script>
+// Restore scroll position when returning from a detail page
+(function() {
+  var y = sessionStorage.getItem('listScrollY');
+  if (y) { window.scrollTo(0, parseInt(y)); sessionStorage.removeItem('listScrollY'); }
+})();
+
+// Mark previously viewed papers
+(function() {
+  var viewed = JSON.parse(localStorage.getItem('viewedPapers') || '{}');
+  document.querySelectorAll('a[data-paper-id]').forEach(function(a) {
+    if (viewed[a.dataset.paperId]) a.classList.add('viewed');
+  });
+})();
+
+function beforeNav(el) {
+  sessionStorage.setItem('listScrollY', window.scrollY);
+  var viewed = JSON.parse(localStorage.getItem('viewedPapers') || '{}');
+  viewed[el.dataset.paperId] = true;
+  localStorage.setItem('viewedPapers', JSON.stringify(viewed));
+}
+
 function adjustBoost(paperId, current) {
   var v = prompt('当前加分: ' + current.toFixed(2) + '\n输入新加分（范围 -1 到 1，0 = 不加）:', current.toFixed(2));
   if (v === null) return;
