@@ -3,15 +3,26 @@ from utils.db import get_papers, update_paper
 
 # Keyword weights — higher = more central to "world model" research
 _WEIGHTS = {
-    "world model":            3.0,
-    "generative world model": 4.0,
-    "world foundation model": 4.0,
-    "model-based rl":         2.0,
-    "dreamer":                2.5,
-    "planet":                 1.5,
-    "td-mpc":                 2.0,
-    "video prediction":       1.5,
-    "embodied world model":   3.0,
+    # Core world model terms
+    "world model":              3.0,
+    "generative world model":   4.0,
+    "world foundation model":   4.0,
+    "visual world model":       3.5,
+    "driving world model":      3.0,
+    "embodied world model":     3.0,
+    # Visual generation — our group's focus
+    "cosmos":                   2.5,
+    "hunyuan":                  2.0,
+    "video diffusion":          1.5,
+    "text-to-video":            1.5,
+    "4d generation":            2.0,
+    "scene generation":         1.5,
+    # RL-based world models — lower priority
+    "model-based rl":           1.5,
+    "video prediction":         1.0,
+    "dreamer":                  0.8,
+    "td-mpc":                   0.8,
+    "planet":                   0.5,
 }
 _MAX_RAW = sum(_WEIGHTS.values())  # normalisation denominator
 
