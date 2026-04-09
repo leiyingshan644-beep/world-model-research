@@ -4,3 +4,13 @@ pdfs/
 __pycache__/
 *.pyc
 .pytest_cache/
+# macOS resource forks
+._*
+.DS_Store
+# idea_gen runtime artifacts
+idea_gen/gaps/
+idea_gen/ideas_draft/
+idea_gen/ideas_final/
+idea_gen/batch_themes.json
+idea_gen/ideas_draft.json
+idea_gen/ideas_final.json

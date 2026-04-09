@@ -1,5 +1,5 @@
 import argparse
-from utils.db import get_papers, update_paper
+from utils.db import get_papers, update_paper, batch_update_papers
 
 # Keyword weights — higher = more central to "world model" research
 _WEIGHTS = {
@@ -79,25 +79,28 @@ def run_filter(auto: bool = False, review: bool = False):
     if review:
         papers = [p for p in papers if p["relevance_label"] is None]
 
-    # Score all
+    # Score all in memory first, then write in one transaction
+    label_counts = {"high": 0, "mid": 0, "low": 0}
+    updates = []
     for p in papers:
         s = score_paper(p)
-        update_paper(p["id"], relevance_score=s)
         p["relevance_score"] = s
-
-    if auto:
-        label_counts = {"high": 0, "mid": 0, "low": 0}
-        for p in papers:
-            s = p["relevance_score"]
+        if auto:
             if s >= _THRESH_HIGH:
                 label = "high"
             elif s >= _THRESH_MID:
                 label = "mid"
             else:
                 label = "low"
-            update_paper(p["id"], relevance_label=label)
             label_counts[label] += 1
+        else:
+            label = p.get("relevance_label")  # preserve existing
+        updates.append((p["id"], s, label))
 
+    print(f"  Writing {len(updates)} scores to DB...", flush=True)
+    batch_update_papers(updates)
+
+    if auto:
         _print_filter_report(papers, label_counts)
         return
 

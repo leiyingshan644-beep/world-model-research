@@ -6,7 +6,7 @@ from config import DB_PATH
 
 
 def get_conn():
-    return sqlite3.connect(DB_PATH)
+    return sqlite3.connect(DB_PATH, timeout=30)
 
 
 def init_db():
@@ -129,6 +129,19 @@ def get_papers(venue=None, year=None, label=None, status=None):
         query += " ORDER BY (relevance_score + COALESCE(manual_boost, 0)) DESC"
         rows = conn.execute(query, params).fetchall()
         return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def batch_update_papers(updates: list[tuple]):
+    """updates: list of (paper_id, score, label) — single transaction for speed."""
+    conn = get_conn()
+    try:
+        conn.executemany(
+            "UPDATE papers SET relevance_score = ?, relevance_label = ? WHERE id = ?",
+            [(score, label, pid) for pid, score, label in updates],
+        )
+        conn.commit()
     finally:
         conn.close()
 
