@@ -256,15 +256,23 @@ def step_2b(client: OpenAI):
         for g in gaps
     )
 
-    n_ideas = max(20, len(themes) * 2)
-    print(f"\n[2b] Generating {n_ideas} draft ideas from {len(themes)} themes...", flush=True)
-
-    raw   = _llm(client, _IDEA_PROMPT.format(
-        n_papers=len(gaps), n_ideas=n_ideas,
-        themes_json=json.dumps(themes, ensure_ascii=False, indent=2),
-        all_gaps_summary=all_gaps_summary[:8000],
-    ), temperature=0.7)
-    ideas = json.loads(raw)
+    # Generate in two rounds of 15 to avoid overwhelming the model
+    print(f"\n[2b] Generating ideas from {len(themes)} themes (2 rounds × 15)...", flush=True)
+    ideas = []
+    for round_n, focus in enumerate(["novel algorithmic approaches", "system-level and application-level approaches"], 1):
+        print(f"  Round {round_n}/2 — focus: {focus}", flush=True)
+        raw = _llm(client, _IDEA_PROMPT.format(
+            n_papers=len(gaps), n_ideas=15,
+            themes_json=json.dumps(themes, ensure_ascii=False, indent=2),
+            all_gaps_summary=all_gaps_summary[:6000],
+        ) + f"\n\nFor this round, focus especially on: {focus}. Start idea IDs from {len(ideas)+1}.",
+        temperature=0.75)
+        batch = json.loads(raw)
+        # Re-number ids to be sequential
+        for idea in batch:
+            idea["id"] = len(ideas) + 1
+            ideas.append(idea)
+        print(f"    → {len(batch)} ideas", flush=True)
 
     # Build paper metadata index for link rendering
     paper_meta = {g["paper_id"]: {"title": g["title"], "year": g["year"], "venue": g["venue"]}
