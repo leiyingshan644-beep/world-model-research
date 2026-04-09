@@ -71,6 +71,11 @@ def init_db():
             c.execute("ALTER TABLE papers ADD COLUMN manual_boost REAL DEFAULT 0.0")
         except Exception:
             pass
+        # Viewed column migration
+        try:
+            c.execute("ALTER TABLE papers ADD COLUMN viewed INTEGER DEFAULT 0")
+        except Exception:
+            pass
         conn.commit()
     finally:
         conn.close()
@@ -262,6 +267,36 @@ def get_all_tags() -> list:
             ORDER BY count DESC, t.name
         """).fetchall()
         return [{"name": r[0], "count": r[1]} for r in rows]
+    finally:
+        conn.close()
+
+
+def delete_tag_globally(tag_name: str) -> list[str]:
+    """Delete a tag and all its paper associations. Returns list of affected paper_ids."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT paper_id FROM paper_tags WHERE tag_name = ?", (tag_name,)
+        ).fetchall()
+        affected = [r[0] for r in rows]
+        conn.execute("DELETE FROM paper_tags WHERE tag_name = ?", (tag_name,))
+        conn.execute("DELETE FROM tags WHERE name = ?", (tag_name,))
+        conn.commit()
+        return affected
+    finally:
+        conn.close()
+
+
+def restore_tag(tag_name: str, paper_ids: list[str]):
+    """Restore a deleted tag to a list of papers (undo support)."""
+    conn = get_conn()
+    try:
+        conn.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (tag_name,))
+        conn.executemany(
+            "INSERT OR IGNORE INTO paper_tags (paper_id, tag_name) VALUES (?, ?)",
+            [(pid, tag_name) for pid in paper_ids],
+        )
+        conn.commit()
     finally:
         conn.close()
 
