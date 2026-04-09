@@ -63,19 +63,28 @@ Generate {n_ideas} distinct, concrete research ideas. Each idea should be novel,
 feasible within 6-12 months, and grounded in the literature provided.
 
 For each idea, output a JSON object with these exact keys:
-  "id"          — integer starting from 1
-  "title"       — concise idea title (10-15 words)
-  "problem"     — the specific current problem this addresses (3-5 sentences)
-  "innovation"  — what is novel about this approach vs. existing work (3-5 sentences)
-  "method"      — concrete technical approach (5-8 sentences)
-  "source_ids"  — list of paper_ids that inspired this idea
+
+  English fields:
+  "id"           — integer starting from 1
+  "title"        — concise idea title in English (10-15 words)
+  "problem"      — the specific current problem (3-5 sentences, English)
+  "innovation"   — what is novel vs. existing work (3-5 sentences, English)
+  "method"       — concrete technical approach (5-8 sentences, English)
+
+  Chinese fields (NOT a literal translation — use natural Chinese research writing):
+  "title_zh"     — Chinese title (key technical terms followed by English in parentheses)
+  "problem_zh"   — Chinese problem description (key terms like 世界模型(World Model) with English in parentheses)
+  "innovation_zh"— Chinese innovation description (same parenthetical convention)
+  "method_zh"    — Chinese method description (same parenthetical convention)
+
+  "source_ids"   — list of paper_ids (use the exact paper_id strings from the gap data) that inspired this idea
 
 Return a JSON array. No markdown fences.
 
 Research themes:
 {themes_json}
 
-All gap data (for reference):
+All gap data (for reference, paper_ids are the exact strings to use in source_ids):
 {all_gaps_summary}
 """
 
@@ -88,15 +97,19 @@ Below are {n} draft research ideas. Your task:
 3. Keep well-scoped ideas as-is
 
 For each output idea, provide a JSON object with:
-  "id"          — integer starting from 1
-  "title"       — concise title
-  "problem"     — current problem (3-5 sentences)
-  "innovation"  — novelty vs. existing work (3-5 sentences)
-  "method"      — technical approach (5-8 sentences)
-  "source_ids"  — paper_ids (union of merged ideas if applicable)
-  "provenance"  — one of "original", "merged", "split"
-  "merged_from" — list of original idea ids if merged (else empty list)
-  "split_from"  — original idea id if split (else null)
+  "id"           — integer starting from 1
+  "title"        — concise English title
+  "title_zh"     — Chinese title with key terms parenthetically annotated in English
+  "problem"      — current problem (3-5 sentences, English)
+  "problem_zh"   — current problem in Chinese (key technical terms with English in parentheses)
+  "innovation"   — novelty vs. existing work (3-5 sentences, English)
+  "innovation_zh"— innovation in Chinese (same parenthetical convention)
+  "method"       — technical approach (5-8 sentences, English)
+  "method_zh"    — method in Chinese (same parenthetical convention)
+  "source_ids"   — paper_ids (union of merged ideas if applicable)
+  "provenance"   — one of "original", "merged", "split"
+  "merged_from"  — list of original idea ids if merged (else empty list)
+  "split_from"   — original idea id if split (else null)
 
 Return a JSON array. No markdown fences.
 
@@ -110,7 +123,7 @@ Draft ideas:
 def _load_gaps() -> list[dict]:
     gaps = []
     for fname in sorted(os.listdir(GAPS_DIR)):
-        if fname.endswith(".json"):
+        if fname.endswith(".json") and not fname.startswith("._"):
             with open(os.path.join(GAPS_DIR, fname), encoding="utf-8") as f:
                 gaps.append(json.load(f))
     return gaps
@@ -129,26 +142,34 @@ def _llm(client: OpenAI, prompt: str, temperature: float = 0.5) -> str:
 
 
 def _idea_to_markdown(idea: dict, paper_meta: dict, final: bool = False) -> str:
-    """Render one idea dict to Markdown."""
+    """Render one idea dict to bilingual Markdown."""
     source_links = []
     for pid in idea.get("source_ids", []):
-        meta = paper_meta.get(pid, {})
-        title = meta.get("title", pid)
-        year  = meta.get("year", "")
-        venue = (meta.get("venue") or "").upper() or "arXiv"
-        link  = f"{BROWSE_URL}/{pid}"
+        meta = paper_meta.get(pid)
+        if meta:
+            title = meta.get("title", pid)
+            year  = meta.get("year", "")
+            venue = (meta.get("venue") or "").upper() or "arXiv"
+        else:
+            title, year, venue = pid, "", "arXiv"
+        link = f"{BROWSE_URL}/paper/{pid}"
         source_links.append(f"- [{title}]({link}) [{venue} {year}]")
 
-    provenance = ""
+    provenance_en = ""
+    provenance_zh = ""
     if final:
         prov = idea.get("provenance", "original")
         if prov == "merged":
-            provenance = f"\n> **Merged from ideas:** {idea.get('merged_from', [])}\n"
+            provenance_en = f"\n> **Merged from ideas:** {idea.get('merged_from', [])}\n"
+            provenance_zh = f"\n> **合并自 idea：** {idea.get('merged_from', [])}\n"
         elif prov == "split":
-            provenance = f"\n> **Split from idea:** {idea.get('split_from')}\n"
+            provenance_en = f"\n> **Split from idea:** {idea.get('split_from')}\n"
+            provenance_zh = f"\n> **拆分自 idea：** {idea.get('split_from')}\n"
+
+    sources_md = "\n".join(source_links) if source_links else "_No specific papers cited._"
 
     return f"""# Idea {idea['id']}: {idea['title']}
-{provenance}
+{provenance_en}
 ## Current Problem
 
 {idea.get('problem', '')}
@@ -163,7 +184,27 @@ def _idea_to_markdown(idea: dict, paper_meta: dict, final: bool = False) -> str:
 
 ## Source Papers
 
-{chr(10).join(source_links) if source_links else '_No specific papers cited._'}
+{sources_md}
+
+---
+
+# Idea {idea['id']}（中文版）：{idea.get('title_zh', idea['title'])}
+{provenance_zh}
+## 当前问题
+
+{idea.get('problem_zh', '')}
+
+## 创新点
+
+{idea.get('innovation_zh', '')}
+
+## 方法
+
+{idea.get('method_zh', '')}
+
+## 参考文献
+
+{sources_md}
 """
 
 

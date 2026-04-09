@@ -30,6 +30,26 @@ BROWSE_URL = "http://localhost:5000"
 
 app = Flask(__name__)
 
+# Pre-load gap metadata once at startup (paper_id → {title, year, venue})
+def _build_paper_meta() -> dict:
+    meta = {}
+    if not os.path.exists(GAPS_DIR):
+        return meta
+    for fname in os.listdir(GAPS_DIR):
+        if not fname.endswith(".json") or fname.startswith("._"):
+            continue
+        pid = fname[:-5]
+        try:
+            with open(os.path.join(GAPS_DIR, fname), encoding="utf-8") as f:
+                g = json.load(f)
+            meta[pid] = {"title": g.get("title", pid), "year": g.get("year", ""),
+                         "venue": g.get("venue", "")}
+        except Exception:
+            pass
+    return meta
+
+_PAPER_META: dict = {}
+
 # ── Running jobs tracker ───────────────────────────────────────────────────
 _jobs: dict[str, dict] = {}  # step -> {status, log}
 _jobs_lock = threading.Lock()
@@ -155,9 +175,9 @@ _NAV = """
 _LIST_HTML = """<!DOCTYPE html><html><head>
 <meta charset="utf-8"><title>Ideas — {{title}}</title>
 <style>""" + _BASE_CSS + """
-.search {{ margin-bottom: 20px; }}
-.search input {{ width: 100%; padding: 10px 14px; border: 1px solid #ddd;
-                 border-radius: 6px; font-size: 15px; }}
+.search { margin-bottom: 20px; }
+.search input { width: 100%; padding: 10px 14px; border: 1px solid #ddd;
+                border-radius: 6px; font-size: 15px; }
 </style></head><body>
 """ + _NAV + """
 <div class="container">
@@ -190,13 +210,24 @@ function filter() {
 
 _DETAIL_HTML = """<!DOCTYPE html><html><head>
 <meta charset="utf-8"><title>{{idea.title}}</title>
-<style>""" + _BASE_CSS + """</style></head><body>
+<style>""" + _BASE_CSS + """
+.lang-toggle { display:flex; gap:8px; margin-bottom:20px; }
+.lang-btn { padding:6px 16px; border-radius:20px; border:1px solid #ccc;
+            background:#fff; cursor:pointer; font-size:13px; }
+.lang-btn.active { background:#0057d9; color:#fff; border-color:#0057d9; }
+.lang-section { display:none; }
+.lang-section.active { display:block; }
+hr.divider { border:none; border-top:2px solid #eee; margin:32px 0; }
+</style></head><body>
 """ + _NAV + """
 <div class="container">
   <p style="margin-bottom:12px"><a href="{{back_url}}">← Back to list</a></p>
   <div class="card">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
-      <h1 style="font-size:20px;margin:0">{{idea.id}}. {{idea.title}}</h1>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <h1 style="font-size:20px;margin:0">
+        {{idea.id}}. {{idea.title}}
+        {%- if idea.title_zh %} <span style="color:#666;font-size:15px">/ {{idea.title_zh}}</span>{%- endif %}
+      </h1>
       {%- if final %}
         {%- if idea.provenance == 'merged' %}
           <span class="tag tag-merged">merged from {{idea.merged_from}}</span>
@@ -209,20 +240,61 @@ _DETAIL_HTML = """<!DOCTYPE html><html><head>
         <span class="tag tag-draft">draft</span>
       {%- endif %}
     </div>
+
+    <div class="lang-toggle">
+      <button class="lang-btn active" onclick="switchLang('en', this)">English</button>
+      <button class="lang-btn" onclick="switchLang('zh', this)">中文</button>
+      <button class="lang-btn" onclick="switchLang('both', this)">双语</button>
+    </div>
+
     <div class="prose">
-      <h2>Current Problem</h2><p>{{idea.problem}}</p>
-      <h2>Innovation</h2><p>{{idea.innovation}}</p>
-      <h2>Proposed Method</h2><p>{{idea.method}}</p>
-      <h2>Source Papers</h2>
+      <!-- English -->
+      <div class="lang-section active" id="sec-en">
+        <h2>Current Problem</h2><p>{{idea.problem}}</p>
+        <h2>Innovation</h2><p>{{idea.innovation}}</p>
+        <h2>Proposed Method</h2><p>{{idea.method}}</p>
+      </div>
+      <!-- Chinese -->
+      <div class="lang-section" id="sec-zh">
+        <h2>当前问题</h2><p>{{idea.problem_zh or idea.problem}}</p>
+        <h2>创新点</h2><p>{{idea.innovation_zh or idea.innovation}}</p>
+        <h2>方法</h2><p>{{idea.method_zh or idea.method}}</p>
+      </div>
+      <!-- Both -->
+      <div class="lang-section" id="sec-both">
+        <h2>Current Problem / 当前问题</h2>
+        <p>{{idea.problem}}</p>
+        <p style="color:#555;margin-top:6px">{{idea.problem_zh or ''}}</p>
+        <h2>Innovation / 创新点</h2>
+        <p>{{idea.innovation}}</p>
+        <p style="color:#555;margin-top:6px">{{idea.innovation_zh or ''}}</p>
+        <h2>Proposed Method / 方法</h2>
+        <p>{{idea.method}}</p>
+        <p style="color:#555;margin-top:6px">{{idea.method_zh or ''}}</p>
+      </div>
+
+      <hr class="divider">
+      <h2>Source Papers / 参考文献</h2>
       <ul>
       {%- for src in sources %}
         <li><a href="{{src.url}}" target="_blank">{{src.title}}</a>
             <span class="badge">[{{src.venue}} {{src.year}}]</span></li>
+      {%- else %}
+        <li style="color:#999">No specific papers cited.</li>
       {%- endfor %}
       </ul>
     </div>
   </div>
-</div></body></html>"""
+</div>
+<script>
+function switchLang(lang, btn) {
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.lang-section').forEach(s => s.classList.remove('active'));
+  document.getElementById('sec-' + lang).classList.add('active');
+}
+</script>
+</body></html>"""
 
 _RUN_HTML = """<!DOCTYPE html><html><head>
 <meta charset="utf-8"><title>Run Pipeline</title>
@@ -315,19 +387,9 @@ def _idea_list_context(ideas: list[dict], final: bool) -> list[dict]:
 
 
 def _source_context(idea: dict) -> list[dict]:
-    gap_meta = {}
-    for fname in os.listdir(GAPS_DIR):
-        if not fname.endswith(".json"):
-            continue
-        pid = fname[:-5]
-        fpath = os.path.join(GAPS_DIR, fname)
-        with open(fpath, encoding="utf-8") as f:
-            g = json.load(f)
-        gap_meta[pid] = g
-
     sources = []
     for pid in idea.get("source_ids", []):
-        meta = gap_meta.get(pid, {})
+        meta = _PAPER_META.get(pid, {})
         sources.append({
             "title": meta.get("title", pid),
             "year":  meta.get("year", ""),
@@ -381,7 +443,7 @@ def draft_detail(idea_id: int):
 @app.route("/run")
 def run_page():
     stats = {
-        "gaps":   len([f for f in os.listdir(GAPS_DIR) if f.endswith(".json")]) if os.path.exists(GAPS_DIR) else 0,
+        "gaps":   len([f for f in os.listdir(GAPS_DIR) if f.endswith(".json") and not f.startswith("._")]) if os.path.exists(GAPS_DIR) else 0,
         "drafts": len(_load_ideas(DRAFT_JSON)),
         "finals": len(_load_ideas(FINAL_JSON)),
     }
@@ -431,6 +493,8 @@ if __name__ == "__main__":
     os.makedirs(GAPS_DIR,   exist_ok=True)
     os.makedirs(DRAFT_DIR,  exist_ok=True)
     os.makedirs(FINAL_DIR,  exist_ok=True)
+    _PAPER_META.update(_build_paper_meta())
+    print(f"  Loaded metadata for {len(_PAPER_META)} papers")
     print("  Idea Bench running at http://localhost:5001")
     print("  Paper browser at     http://localhost:5000")
     app.run(host="0.0.0.0", port=5001, debug=False)
