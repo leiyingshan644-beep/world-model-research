@@ -13,7 +13,7 @@ LLM_MODEL    = "qwen-plus"
 S2_API_KEY = ""
 
 TARGET_VENUES = ["neurips", "icml", "iclr", "cvpr", "corl"]
-YEAR_RANGE    = (2021, 2025)
+YEAR_RANGE    = (2021, 2026)
 
 KEYWORDS = [
     # Core world model terms
