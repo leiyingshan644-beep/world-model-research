@@ -8,9 +8,10 @@ import time
 from utils.db import (get_papers, get_summary, search_papers, update_my_thoughts,
                       update_paper, add_tag_to_paper, remove_tag_from_paper,
                       get_tags_for_paper, get_all_tags, get_papers_by_tag,
-                      delete_tag_globally, restore_tag)
+                      delete_tag_globally, restore_tag, init_db)
 
 app = Flask(__name__)
+init_db()  # create/migrate tables on every startup (idempotent)
 
 # In-memory undo stack for globally deleted tags: {tag_name: (paper_ids, expire_ts)}
 _tag_undo: dict[str, tuple[list, float]] = {}
