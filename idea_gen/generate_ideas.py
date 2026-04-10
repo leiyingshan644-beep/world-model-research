@@ -256,18 +256,35 @@ def step_2b(client: OpenAI):
         for g in gaps
     )
 
-    # Generate in two rounds of 15 to avoid overwhelming the model
-    print(f"\n[2b] Generating ideas from {len(themes)} themes (2 rounds × 15)...", flush=True)
+    # Generate in 3 rounds of 8 — keeps each response small enough to avoid truncation
+    round_focuses = [
+        "novel algorithmic approaches (e.g. new architectures, training objectives, representations)",
+        "system-level and efficiency approaches (e.g. inference speed, memory, scalability)",
+        "application and evaluation approaches (e.g. autonomous driving, robotics, benchmarks)",
+    ]
+    print(f"\n[2b] Generating ideas from {len(themes)} themes (3 rounds × 8)...", flush=True)
     ideas = []
-    for round_n, focus in enumerate(["novel algorithmic approaches", "system-level and application-level approaches"], 1):
-        print(f"  Round {round_n}/2 — focus: {focus}", flush=True)
+    for round_n, focus in enumerate(round_focuses, 1):
+        print(f"  Round {round_n}/3 — focus: {focus[:60]}...", flush=True)
         raw = _llm(client, _IDEA_PROMPT.format(
-            n_papers=len(gaps), n_ideas=15,
+            n_papers=len(gaps), n_ideas=8,
             themes_json=json.dumps(themes, ensure_ascii=False, indent=2),
-            all_gaps_summary=all_gaps_summary[:6000],
-        ) + f"\n\nFor this round, focus especially on: {focus}. Start idea IDs from {len(ideas)+1}.",
+            all_gaps_summary=all_gaps_summary[:5000],
+        ) + f"\n\nFor this round, focus especially on: {focus}."
+          + f" Generate exactly 8 ideas. Start idea IDs from {len(ideas)+1}."
+          + " Keep each text field under 200 words.",
         temperature=0.75)
-        batch = json.loads(raw)
+        try:
+            batch = json.loads(raw)
+        except json.JSONDecodeError:
+            # Try to recover partial JSON array
+            raw_fixed = raw[:raw.rfind("}") + 1] + "]"
+            try:
+                batch = json.loads(raw_fixed)
+                print(f"    [recovered partial JSON: {len(batch)} ideas]", flush=True)
+            except Exception:
+                print(f"    [round {round_n} failed to parse, skipping]", flush=True)
+                continue
         # Re-number ids to be sequential
         for idea in batch:
             idea["id"] = len(ideas) + 1
