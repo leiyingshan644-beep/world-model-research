@@ -24,7 +24,8 @@ FINAL_DIR  = os.path.join(BASE_DIR, "ideas_final")
 DRAFT_DIR  = os.path.join(BASE_DIR, "ideas_draft")
 FINAL_JSON = os.path.join(BASE_DIR, "ideas_final.json")
 DRAFT_JSON = os.path.join(BASE_DIR, "ideas_draft.json")
-GAPS_DIR   = os.path.join(BASE_DIR, "gaps")
+GAPS_DIR    = os.path.join(BASE_DIR, "gaps")
+PASSED_JSON = os.path.join(BASE_DIR, "passed_ideas.json")  # permanent, never overwritten by pipeline
 
 BROWSE_URL = "http://localhost:5000"
 
@@ -81,6 +82,19 @@ def _load_ideas(json_path: str) -> list[dict]:
         return []
     with open(json_path, encoding="utf-8") as f:
         return json.load(f)
+
+
+def _load_passed() -> dict:
+    """Return {uid: idea_dict}. uid = '{source}:{id}' e.g. 'final:3'"""
+    if not os.path.exists(PASSED_JSON):
+        return {}
+    with open(PASSED_JSON, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _save_passed(passed: dict):
+    with open(PASSED_JSON, "w", encoding="utf-8") as f:
+        json.dump(passed, f, ensure_ascii=False, indent=2)
 
 
 def _md_to_sections(md: str) -> dict:
@@ -167,6 +181,7 @@ _NAV = """
   <span class="logo">💡 Idea Bench</span>
   <a href="/">Final Ideas</a>
   <a href="/draft">Draft Ideas</a>
+  <a href="/passed" style="color:#f7c948;font-weight:600">★ Passed Ideas</a>
   <a href="/run">Run Pipeline</a>
   <a href="{browse}" target="_blank">↗ Paper Browser</a>
 </nav>
@@ -178,6 +193,13 @@ _LIST_HTML = """<!DOCTYPE html><html><head>
 .search { margin-bottom: 20px; }
 .search input { width: 100%; padding: 10px 14px; border: 1px solid #ddd;
                 border-radius: 6px; font-size: 15px; }
+.card-footer { display:flex; align-items:center; justify-content:space-between; margin-top:10px; }
+.pass-btn { padding:4px 14px; border-radius:20px; border:none; cursor:pointer;
+            font-size:12px; font-weight:600; transition:all .15s; }
+.pass-btn.off { background:#f0f0f0; color:#666; }
+.pass-btn.off:hover { background:#ffe066; color:#333; }
+.pass-btn.on  { background:#f7c948; color:#333; }
+.tag-passed { background:#fff3cd; color:#856404; }
 </style></head><body>
 """ + _NAV + """
 <div class="container">
@@ -188,13 +210,19 @@ _LIST_HTML = """<!DOCTYPE html><html><head>
   <div class="card" data-text="{{idea.title|lower}} {{idea.problem|lower}}">
     <h3>
       <a href="{{idea.url}}">{{idea.id}}. {{idea.title}}</a>
+      {%- if idea.passed %}<span class="tag tag-passed">★ passed</span>{%- endif %}
       {%- if idea.provenance == 'merged' %}<span class="tag tag-merged">merged</span>{%- endif %}
       {%- if idea.provenance == 'split'  %}<span class="tag tag-split">split</span>{%- endif %}
     </h3>
     <p>{{idea.problem[:220]}}{% if idea.problem|length > 220 %}…{% endif %}</p>
-    <p style="margin-top:8px" class="badge">
-      Sources: {{idea.source_ids|length}} papers
-    </p>
+    <div class="card-footer">
+      <span class="badge">Sources: {{idea.source_ids|length}} papers</span>
+      <button class="pass-btn {{'on' if idea.passed else 'off'}}"
+              id="pb-{{idea.source}}-{{idea.id}}"
+              onclick="togglePass('{{idea.source}}', {{idea.id}}, this)">
+        {{'★ Passed' if idea.passed else '☆ Pass'}}
+      </button>
+    </div>
   </div>
   {%- endfor %}
   </div>
@@ -205,6 +233,19 @@ function filter() {
   document.querySelectorAll('#list .card').forEach(c => {
     c.style.display = c.dataset.text.includes(q) ? '' : 'none';
   });
+}
+async function togglePass(source, id, btn) {
+  const isPassed = btn.classList.contains('on');
+  const method = isPassed ? 'DELETE' : 'POST';
+  const r = await fetch('/pass/' + source + '/' + id, {method});
+  const d = await r.json();
+  if (d.ok) {
+    if (d.passed) {
+      btn.classList.replace('off','on'); btn.textContent = '★ Passed';
+    } else {
+      btn.classList.replace('on','off'); btn.textContent = '☆ Pass';
+    }
+  }
 }
 </script></body></html>"""
 
@@ -223,22 +264,32 @@ hr.divider { border:none; border-top:2px solid #eee; margin:32px 0; }
 <div class="container">
   <p style="margin-bottom:12px"><a href="{{back_url}}">← Back to list</a></p>
   <div class="card">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-      <h1 style="font-size:20px;margin:0">
-        {{idea.id}}. {{idea.title}}
-        {%- if idea.title_zh %} <span style="color:#666;font-size:15px">/ {{idea.title_zh}}</span>{%- endif %}
-      </h1>
-      {%- if final %}
-        {%- if idea.provenance == 'merged' %}
-          <span class="tag tag-merged">merged from {{idea.merged_from}}</span>
-        {%- elif idea.provenance == 'split' %}
-          <span class="tag tag-split">split from #{{idea.split_from}}</span>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px">
+      <div>
+        <h1 style="font-size:20px;margin:0 0 6px">
+          {{idea.id}}. {{idea.title}}
+          {%- if idea.title_zh %} <span style="color:#666;font-size:15px">/ {{idea.title_zh}}</span>{%- endif %}
+        </h1>
+        {%- if final %}
+          {%- if idea.provenance == 'merged' %}
+            <span class="tag tag-merged">merged from {{idea.merged_from}}</span>
+          {%- elif idea.provenance == 'split' %}
+            <span class="tag tag-split">split from #{{idea.split_from}}</span>
+          {%- else %}
+            <span class="tag tag-final">final</span>
+          {%- endif %}
         {%- else %}
-          <span class="tag tag-final">final</span>
+          <span class="tag tag-draft">draft</span>
         {%- endif %}
-      {%- else %}
-        <span class="tag tag-draft">draft</span>
-      {%- endif %}
+        {%- if passed %}<span class="tag" style="background:#fff3cd;color:#856404">★ Passed</span>{%- endif %}
+      </div>
+      <button id="pass-btn"
+              style="padding:8px 18px;border-radius:20px;border:none;cursor:pointer;font-weight:600;
+                     white-space:nowrap;background:{{'#f7c948' if passed else '#f0f0f0'}};
+                     color:{{'#333' if passed else '#666'}};"
+              onclick="togglePass('{{source}}', {{idea.id}}, this)">
+        {{'★ Passed' if passed else '☆ Pass this Idea'}}
+      </button>
     </div>
 
     <div class="lang-toggle">
@@ -292,6 +343,21 @@ function switchLang(lang, btn) {
   btn.classList.add('active');
   document.querySelectorAll('.lang-section').forEach(s => s.classList.remove('active'));
   document.getElementById('sec-' + lang).classList.add('active');
+}
+async function togglePass(source, id, btn) {
+  const isPassed = btn.textContent.includes('★');
+  const method = isPassed ? 'DELETE' : 'POST';
+  const r = await fetch('/pass/' + source + '/' + id, {method});
+  const d = await r.json();
+  if (d.ok) {
+    if (d.passed) {
+      btn.textContent = '★ Passed';
+      btn.style.background = '#f7c948'; btn.style.color = '#333';
+    } else {
+      btn.textContent = '☆ Pass this Idea';
+      btn.style.background = '#f0f0f0'; btn.style.color = '#666';
+    }
+  }
 }
 </script>
 </body></html>"""
@@ -370,8 +436,11 @@ async function poll(step) {
 
 # ── Routes ─────────────────────────────────────────────────────────────────
 
-def _idea_list_context(ideas: list[dict], final: bool) -> list[dict]:
+def _idea_list_context(ideas: list[dict], final: bool, passed: dict | None = None) -> list[dict]:
     prefix = "/idea/" if final else "/draft/"
+    source = "final" if final else "draft"
+    if passed is None:
+        passed = _load_passed()
     return [
         {
             "id":          i.get("id"),
@@ -381,6 +450,8 @@ def _idea_list_context(ideas: list[dict], final: bool) -> list[dict]:
             "merged_from": i.get("merged_from", []),
             "source_ids":  i.get("source_ids", []),
             "url":         f"{prefix}{i.get('id')}",
+            "passed":      f"{source}:{i.get('id')}" in passed,
+            "source":      source,
         }
         for i in ideas
     ]
@@ -420,24 +491,71 @@ def draft_list():
 
 @app.route("/idea/<int:idea_id>")
 def idea_detail(idea_id: int):
-    ideas = _load_ideas(FINAL_JSON)
-    idea  = next((i for i in ideas if i.get("id") == idea_id), None)
+    ideas  = _load_ideas(FINAL_JSON)
+    idea   = next((i for i in ideas if i.get("id") == idea_id), None)
     if not idea:
         return "Idea not found", 404
-    sources = _source_context(idea)
-    return render_template_string(_DETAIL_HTML, idea=idea, sources=sources,
-                                  final=True, back_url="/")
+    passed = _load_passed()
+    return render_template_string(_DETAIL_HTML, idea=idea, sources=_source_context(idea),
+                                  final=True, back_url="/",
+                                  passed=f"final:{idea_id}" in passed, source="final")
 
 
 @app.route("/draft/<int:idea_id>")
 def draft_detail(idea_id: int):
-    ideas = _load_ideas(DRAFT_JSON)
-    idea  = next((i for i in ideas if i.get("id") == idea_id), None)
+    ideas  = _load_ideas(DRAFT_JSON)
+    idea   = next((i for i in ideas if i.get("id") == idea_id), None)
     if not idea:
         return "Idea not found", 404
-    sources = _source_context(idea)
-    return render_template_string(_DETAIL_HTML, idea=idea, sources=sources,
-                                  final=False, back_url="/draft")
+    passed = _load_passed()
+    return render_template_string(_DETAIL_HTML, idea=idea, sources=_source_context(idea),
+                                  final=False, back_url="/draft",
+                                  passed=f"draft:{idea_id}" in passed, source="draft")
+
+
+@app.route("/passed")
+def passed_list():
+    passed = _load_passed()
+    ideas  = list(passed.values())
+    ctx    = [
+        {
+            "id":         i.get("id"),
+            "title":      i.get("title", ""),
+            "problem":    i.get("problem", ""),
+            "provenance": i.get("provenance", "original"),
+            "merged_from":i.get("merged_from", []),
+            "source_ids": i.get("source_ids", []),
+            "source":     i.get("_source", "final"),
+            "passed":     True,
+            "url":        f"/{i.get('_source','idea')}/{i.get('id')}",
+        }
+        for i in ideas
+    ]
+    return render_template_string(_LIST_HTML, ideas=ctx, title=f"★ Passed Ideas")
+
+
+@app.route("/pass/<source>/<int:idea_id>", methods=["POST", "DELETE"])
+def toggle_pass(source: str, idea_id: int):
+    if source not in ("final", "draft"):
+        return jsonify({"ok": False}), 400
+    json_path = FINAL_JSON if source == "final" else DRAFT_JSON
+    ideas     = _load_ideas(json_path)
+    idea      = next((i for i in ideas if i.get("id") == idea_id), None)
+    if not idea:
+        return jsonify({"ok": False, "reason": "idea not found"}), 404
+
+    passed = _load_passed()
+    uid    = f"{source}:{idea_id}"
+
+    if request.method == "POST":
+        idea["_source"] = source
+        passed[uid]     = idea
+        _save_passed(passed)
+        return jsonify({"ok": True, "passed": True})
+    else:  # DELETE = unpass
+        passed.pop(uid, None)
+        _save_passed(passed)
+        return jsonify({"ok": True, "passed": False})
 
 
 @app.route("/run")
