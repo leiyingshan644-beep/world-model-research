@@ -287,7 +287,7 @@ hr.divider { border:none; border-top:2px solid #eee; margin:32px 0; }
               style="padding:8px 18px;border-radius:20px;border:none;cursor:pointer;font-weight:600;
                      white-space:nowrap;background:{{'#f7c948' if passed else '#f0f0f0'}};
                      color:{{'#333' if passed else '#666'}};"
-              onclick="togglePass('{{source}}', {{idea.id}}, this)">
+              onclick="togglePass('{{idea_source}}', {{idea.id}}, this)">
         {{'★ Passed' if passed else '☆ Pass this Idea'}}
       </button>
     </div>
@@ -498,7 +498,7 @@ def idea_detail(idea_id: int):
     passed = _load_passed()
     return render_template_string(_DETAIL_HTML, idea=idea, sources=_source_context(idea),
                                   final=True, back_url="/",
-                                  passed=f"final:{idea_id}" in passed, source="final")
+                                  passed=f"final:{idea_id}" in passed, idea_source="final")
 
 
 @app.route("/draft/<int:idea_id>")
@@ -510,7 +510,7 @@ def draft_detail(idea_id: int):
     passed = _load_passed()
     return render_template_string(_DETAIL_HTML, idea=idea, sources=_source_context(idea),
                                   final=False, back_url="/draft",
-                                  passed=f"draft:{idea_id}" in passed, source="draft")
+                                  passed=f"draft:{idea_id}" in passed, idea_source="draft")
 
 
 @app.route("/passed")
