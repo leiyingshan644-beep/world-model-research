@@ -14,3 +14,5 @@ idea_gen/ideas_final/
 idea_gen/batch_themes.json
 idea_gen/ideas_draft.json
 idea_gen/ideas_final.json
+idea_gen/ideas_final.json.bak
+idea_gen/passed_ideas/

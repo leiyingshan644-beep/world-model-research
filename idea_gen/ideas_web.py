@@ -184,7 +184,26 @@ _NAV = """
   <a href="/passed" style="color:#f7c948;font-weight:600">★ Passed Ideas</a>
   <a href="/run">Run Pipeline</a>
   <a href="{browse}" target="_blank">↗ Paper Browser</a>
+  <button onclick="saveNow(this)" style="margin-left:auto;padding:4px 14px;background:#2ecc71;
+          color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px;">
+    ↓ Save Passed
+  </button>
 </nav>
+<script>
+async function saveNow(btn) {{
+  btn.textContent = 'Saving…'; btn.disabled = true;
+  const r = await fetch('/export', {{method:'POST'}});
+  const d = await r.json();
+  btn.textContent = d.ok ? '✓ Saved (' + d.count + ')' : '✗ Error';
+  btn.style.background = d.ok ? '#27ae60' : '#e74c3c';
+  setTimeout(() => {{ btn.textContent = '↓ Save Passed'; btn.disabled = false;
+                      btn.style.background = '#2ecc71'; }}, 3000);
+}}
+// Auto-save when tab/window closes
+window.addEventListener('beforeunload', () => {{
+  navigator.sendBeacon('/export', '');
+}});
+</script>
 """.format(browse=BROWSE_URL)
 
 _LIST_HTML = """<!DOCTYPE html><html><head>
@@ -599,6 +618,22 @@ def run_step(step: str):
 
     t.start()
     return jsonify({"status": "started"})
+
+
+@app.route("/export", methods=["POST"])
+def export_passed():
+    """Export all passed ideas as Markdown files to idea_gen/passed_ideas/."""
+    try:
+        script = os.path.join(BASE_DIR, "export_passed.py")
+        proc   = subprocess.run(
+            [sys.executable, script],
+            capture_output=True, text=True, cwd=os.path.dirname(BASE_DIR),
+        )
+        passed = _load_passed()
+        return jsonify({"ok": proc.returncode == 0, "count": len(passed),
+                        "log": proc.stdout + proc.stderr})
+    except Exception as e:
+        return jsonify({"ok": False, "count": 0, "log": str(e)})
 
 
 @app.route("/status")
