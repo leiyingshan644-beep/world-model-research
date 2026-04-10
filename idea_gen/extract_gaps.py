@@ -141,7 +141,8 @@ def run_extract(dry_run: bool = False):
     papers   = select_papers()
     summaries = _get_summaries()
 
-    already_done = {f.replace(".json", "") for f in os.listdir(GAPS_DIR) if f.endswith(".json")}
+    already_done = {f.replace(".json", "") for f in os.listdir(GAPS_DIR)
+                    if f.endswith(".json") and not f.startswith("._")}
 
     print(f"\n  Selected {len(papers)} papers for gap extraction")
     print(f"  Summaries available: {len(summaries)}")
