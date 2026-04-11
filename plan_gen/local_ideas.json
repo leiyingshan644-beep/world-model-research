@@ -1,0 +1,64 @@
+[
+  {
+    "id": "local:1a",
+    "title": "无控制序列监督的自监督世界模型",
+    "title_en": "Self-Supervised World Model Learning Motion Dynamics from Raw Video Without Control Sequences",
+    "problem": "现有世界模型训练高度依赖外参轨迹、动作标注等控制序列监督信号，导致数据收集成本高、泛化性差。能否仅从网络上的原始视频中自动学习物理世界的运动规律，训出表现优秀的基座模型？",
+    "innovation": "不依赖任何控制序列标注，通过自监督方式从海量网络视频中学习运动动力学；引入高质量世界模型（如Wan、Cosmos）和VLM作为蒸馏教师，让教师生成高质量运动视频片段供学生模型学习。",
+    "keywords_en": ["self-supervised world model", "video prediction", "model distillation", "unsupervised dynamics learning", "motion representation"],
+    "difficulty": "模型架构设计有挑战：如何在无动作标注的情况下学习可控动力学",
+    "split_from": "local:1",
+    "notes": "想法一拆解A：聚焦无监督动力学学习架构"
+  },
+  {
+    "id": "local:1b",
+    "title": "物理信号辅助的世界模型生成",
+    "title_en": "Physics-Signal-Augmented World Model with Position, Velocity, and Acceleration Prediction",
+    "problem": "当前生成式世界模型仅学习视频像素生成，缺乏对底层物理量的显式建模，导致生成视频物理不一致。",
+    "innovation": "在学习视频生成的同时，模型同步预测位置向量、速度向量、加速度等物理信号，将物理量作为辅助监督信号约束生成过程，提升物理一致性。",
+    "keywords_en": ["physics-informed world model", "motion prediction", "velocity estimation", "physical consistency", "auxiliary supervision"],
+    "difficulty": "对物理信号数据标注质量要求极高，需要高精度的运动估计数据",
+    "split_from": "local:1",
+    "notes": "想法一拆解B：聚焦物理信号辅助生成"
+  },
+  {
+    "id": "local:2",
+    "title": "生成式世界模型记忆能力Benchmark",
+    "title_en": "Memory Benchmark for Generative World Models Inspired by Cognitive Science",
+    "problem": "现有世界模型评估体系集中于生成质量和任务回报，缺乏专门针对记忆能力（长时记忆、情景记忆、工作记忆）的评估框架。仿生学中的记忆机制研究积累了丰富的任务设计范式，尚未被系统引入世界模型评估。",
+    "innovation": "借鉴认知科学和仿生学中的记忆类任务（如延迟匹配、序列回忆、情景重放），为生成式世界模型设计专用Benchmark，系统评估模型的时序记忆与关键信息保留能力。",
+    "keywords_en": ["world model benchmark", "memory evaluation", "episodic memory", "temporal reasoning", "cognitive benchmark"],
+    "difficulty": "测试模型众多；人类一致性验证复杂；模型泛化能力评估维度多",
+    "notes": "想法二：偏向评估/数据集贡献，适合作为独立论文"
+  },
+  {
+    "id": "local:3",
+    "title": "BEV约束下的层次化3D世界模型生成",
+    "title_en": "Hierarchical 3D World Model Generation Constrained by Bird's-Eye-View Spatial Imagination",
+    "problem": "类似HunyuanWorld的3D世界模型直接在三维点云空间建模，架构复杂且训练困难。从低维到高维渐进建模的思路在世界模型中尚未充分探索。",
+    "innovation": "先在俯视图（BEV）中进行二维空间建模和扩散生成，建立全局空间布局约束；再以BEV作为条件先验，驱动三维空间的生成和扩散。将空间想象分解为先二维后三维的层次化过程，降低建模复杂度。",
+    "keywords_en": ["bird's-eye-view generation", "3D world model", "hierarchical spatial modeling", "BEV constraint", "point cloud generation", "spatial imagination"],
+    "difficulty": "技术架构设计：BEV到3D的条件生成机制；数据：需要配对的BEV和3D数据",
+    "notes": "想法三：空间想象，和HunyuanWorld形成对比，有新颖性"
+  },
+  {
+    "id": "local:4",
+    "title": "语言先验注入的生成式世界模型推理",
+    "title_en": "Language-Prior-Injected Generative World Model with Linguistic Imagination Before Visual Rollout",
+    "problem": "基于ViT的生成式世界模型直接在视觉空间进行时序推理，缺乏高层语义引导，导致长时序生成语义漂移。人类在视觉想象前往往先进行语言层面的预期建构。",
+    "innovation": "在视觉推理前增加语言想象层：模型先识别当前帧场景，生成描述未来状态的文字序列（语言想象），再将该文字序列作为条件注入ViT生成路线，指导视觉空间的时序推理。",
+    "keywords_en": ["language-guided world model", "visual language model", "ViT generation", "text-conditioned video prediction", "semantic imagination"],
+    "difficulty": "模型架构：语言想象模块与ViT生成路线的耦合方式；推理延迟增加",
+    "notes": "想法四：LLM辅助生成，思路清晰，架构挑战是核心难点"
+  },
+  {
+    "id": "local:6",
+    "title": "自适应动作边界的世界模型训练框架",
+    "title_en": "World Model Training with Adaptive Action-Boundary Segmentation Beyond Fixed-Length Clips",
+    "problem": "当前世界模型训练固定使用等长视频片段（如16帧、32帧），忽略了语义完整的动作边界，导致动作被截断或冗余帧被混入，影响动力学建模质量。",
+    "innovation": "模型不再依赖固定帧数，而是自主学习识别语义完整的动作边界，以完整动作片段作为训练单元；或在模型内部引入记忆层，将多个定长片段拼接形成语义完整的长序列表示。",
+    "keywords_en": ["adaptive segmentation", "action boundary detection", "variable-length sequence", "world model training", "temporal memory"],
+    "difficulty": "动作边界的无监督检测；可变长度序列训练的批处理效率",
+    "notes": "想法六：数据工程+训练策略创新，可行性较高"
+  }
+]
