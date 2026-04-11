@@ -172,8 +172,8 @@ nav a { color: #aac; font-size: 14px; }
 nav a:hover { color: #fff; }
 .container { max-width: 960px; margin: 0 auto; padding: 24px 20px; }
 .card { background: #fff; border-radius: 8px; padding: 18px 22px;
-        margin-bottom: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.08);
-        display: flex; align-items: flex-start; gap: 16px; }
+        margin-bottom: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+.card.list-card { display: flex; align-items: flex-start; gap: 16px; }
 .card-body { flex: 1; }
 .card h3 { font-size: 15px; margin-bottom: 6px; }
 .card .meta { font-size: 12px; color: #888; }
@@ -241,7 +241,7 @@ def index():
         src_lbl   = "Passed Idea" if p["source"] == "passed" else "本地 Idea"
         notes     = f'<span class="meta">{p["notes"]}</span>' if p["notes"] else ""
         cards_html += f"""
-<div class="card" id="card-{p['plan_id']}">
+<div class="card list-card" id="card-{p['plan_id']}">
   <div class="card-body">
     <h3><a href="/plan/{p['plan_id']}">{p['title']}</a></h3>
     <div style="margin-top:6px">
