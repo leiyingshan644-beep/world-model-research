@@ -18,3 +18,4 @@ idea_gen/ideas_final.json.bak
 idea_gen/passed_ideas/
 # plan_gen runtime artifacts
 plan_gen/plans/
+plan_gen/feasible_plans.json
