@@ -102,32 +102,59 @@ def _list_plans() -> list[dict]:
 
 def _render_md(md: str) -> str:
     """Minimal Markdown → HTML: headers, bold, refs, line breaks."""
-    lines = []
-    for line in md.splitlines():
-        # Headers
+    raw_lines = md.splitlines()
+    out = []
+    first_h1_seen = False
+    in_ul = False
+
+    def inline(text: str) -> str:
+        text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
+        text = re.sub(r"`(.+?)`", r"<code>\1</code>", text)
+        text = re.sub(r"\[(\d+)\]", r'<sup class="ref">[\1]</sup>', text)
+        return text
+
+    def close_ul():
+        nonlocal in_ul
+        if in_ul:
+            out.append("</ul>")
+            in_ul = False
+
+    for line in raw_lines:
         if line.startswith("### "):
-            line = f"<h3>{line[4:]}</h3>"
+            close_ul()
+            out.append(f"<h4>{inline(line[4:].strip())}</h4>")
         elif line.startswith("## "):
-            line = f"<h2>{line[3:]}</h2>"
+            close_ul()
+            out.append(f"<h3>{inline(line[3:].strip())}</h3>")
         elif line.startswith("# "):
-            line = f"<h1>{line[2:]}</h1>"
+            close_ul()
+            text = line[2:].strip()
+            if not first_h1_seen:
+                out.append(f"<h1>{inline(text)}</h1>")
+                first_h1_seen = True
+            else:
+                # Subsequent # headings are section titles → h2
+                out.append(f"<h2>{inline(text)}</h2>")
         elif line.startswith("---"):
-            line = "<hr>"
+            close_ul()
+            out.append("<hr>")
         elif line.startswith("- ") or line.startswith("* "):
-            line = f"<li>{line[2:]}</li>"
+            if not in_ul:
+                out.append("<ul>")
+                in_ul = True
+            out.append(f"<li>{inline(line[2:].strip())}</li>")
         elif line.startswith("> "):
-            line = f"<blockquote>{line[2:]}</blockquote>"
+            close_ul()
+            out.append(f"<blockquote>{inline(line[2:].strip())}</blockquote>")
         else:
-            # Bold **text**
-            line = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", line)
-            # Inline code
-            line = re.sub(r"`(.+?)`", r"<code>\1</code>", line)
-            # Citations [N]
-            line = re.sub(r"\[(\d+)\]", r'<sup class="ref">[\1]</sup>', line)
+            close_ul()
             if line.strip():
-                line = f"<p>{line}</p>"
-        lines.append(line)
-    return "\n".join(lines)
+                out.append(f"<p>{inline(line)}</p>")
+            else:
+                out.append("")
+
+    close_ul()
+    return "\n".join(out)
 
 
 # ── CSS & Nav ──────────────────────────────────────────────────────────────
